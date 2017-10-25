@@ -6,15 +6,15 @@
  * Time: 4:28 PM
  */
 
-$ch = curl_init('https://httpbin.org/get');
+$ch = curl_init('http://www.toolbox.local/');
 curl_setopt($ch, CURLOPT_RETURNTRANSFER, TRUE);
 
-$result = curl_exec($ch);
+$response = curl_exec($ch);
 
 // Check if any error occurred
 if (!curl_errno($ch)) {
   $info = curl_getinfo($ch);
-  print_r(json_decode($result));
+  print_r(json_decode($response));
   echo 'Took ', $info['total_time'], ' seconds to send a request to ', $info['url'], "\n";
   print_r($info);
 }
