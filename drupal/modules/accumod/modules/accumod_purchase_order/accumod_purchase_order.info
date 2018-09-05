@@ -1,0 +1,5 @@
+name = Accu-Glass Purchase Order
+description = Accept orders with a Purchase Order Number.
+core = 7.x
+package = Accu-Glass
+dependencies[] = 'commerce'

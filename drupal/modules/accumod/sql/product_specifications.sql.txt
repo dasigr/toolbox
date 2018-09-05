@@ -1,0 +1,79 @@
+/* Product Specifications */
+CREATE VIEW `product_specifications` AS
+SELECT
+  `xcart_products`.`productid`,
+  `xcart_products`.`productcode`,
+  MAX(IF(`xcart_extra_fields`.`fieldid` = 1, `xcart_extra_field_values`.`value`, '')) as 'MDCPART',
+  MAX(IF(`xcart_extra_fields`.`fieldid` = 2, `xcart_extra_field_values`.`value`, '')) as 'KohzuPART',
+  MAX(IF(`xcart_extra_fields`.`fieldid` = 3, `xcart_extra_field_values`.`value`, '')) as 'Materials',
+  MAX(IF(`xcart_extra_fields`.`fieldid` = 4, `xcart_extra_field_values`.`value`, '')) as 'ISIPART',
+  MAX(IF(`xcart_extra_fields`.`fieldid` = 5, `xcart_extra_field_values`.`value`, '')) as 'Kurt_LeskerPart',
+  MAX(IF(`xcart_extra_fields`.`fieldid` = 6, `xcart_extra_field_values`.`value`, '')) as 'MPF_Part',
+  MAX(IF(`xcart_extra_fields`.`fieldid` = 7, `xcart_extra_field_values`.`value`, '')) as 'Ceramaseal_Part',
+  MAX(IF(`xcart_extra_fields`.`fieldid` = 8, `xcart_extra_field_values`.`value`, '')) as 'Allectra_Part',
+  MAX(IF(`xcart_extra_fields`.`fieldid` = 9, `xcart_extra_field_values`.`value`, '')) as 'NorCal_Part',
+  MAX(IF(`xcart_extra_fields`.`fieldid` = 10, `xcart_extra_field_values`.`value`, '')) as 'Huntinton_Part',
+  MAX(IF(`xcart_extra_fields`.`fieldid` = 11, `xcart_extra_field_values`.`value`, '')) as 'ROHS',
+  MAX(IF(`xcart_extra_fields`.`fieldid` = 12, `xcart_extra_field_values`.`value`, '')) as 'Overall_max_bak_temp',
+  MAX(IF(`xcart_extra_fields`.`fieldid` = 13, `xcart_extra_field_values`.`value`, '')) as 'Overall_max_vac',
+  MAX(IF(`xcart_extra_fields`.`fieldid` = 14, `xcart_extra_field_values`.`value`, '')) as 'Num_Contacts',
+  MAX(IF(`xcart_extra_fields`.`fieldid` = 17, `xcart_extra_field_values`.`value`, '')) as 'Cab_PART',
+  MAX(IF(`xcart_extra_fields`.`fieldid` = 18, `xcart_extra_field_values`.`value`, '')) as 'Max_oper_temp',
+  MAX(IF(`xcart_extra_fields`.`fieldid` = 19, `xcart_extra_field_values`.`value`, '')) as 'Flange_OD',
+  MAX(IF(`xcart_extra_fields`.`fieldid` = 20, `xcart_extra_field_values`.`value`, '')) as 'Gender',
+  MAX(IF(`xcart_extra_fields`.`fieldid` = 21, `xcart_extra_field_values`.`value`, '')) as 'Length',
+  MAX(IF(`xcart_extra_fields`.`fieldid` = 22, `xcart_extra_field_values`.`value`, '')) as 'Width',
+  MAX(IF(`xcart_extra_fields`.`fieldid` = 23, `xcart_extra_field_values`.`value`, '')) as 'depth_thick',
+  MAX(IF(`xcart_extra_fields`.`fieldid` = 24, `xcart_extra_field_values`.`value`, '')) as 'Drawing',
+  MAX(IF(`xcart_extra_fields`.`fieldid` = 25, `xcart_extra_field_values`.`value`, '')) as 'Catalog_page',
+  MAX(IF(`xcart_extra_fields`.`fieldid` = 26, `xcart_extra_field_values`.`value`, '')) as 'Prod_Bulletin',
+  MAX(IF(`xcart_extra_fields`.`fieldid` = 27, `xcart_extra_field_values`.`value`, '')) as 'Min_oper_temp',
+  MAX(IF(`xcart_extra_fields`.`fieldid` = 28, `xcart_extra_field_values`.`value`, '')) as 'Voltage',
+  MAX(IF(`xcart_extra_fields`.`fieldid` = 29, `xcart_extra_field_values`.`value`, '')) as 'Current',
+  MAX(IF(`xcart_extra_fields`.`fieldid` = 30, `xcart_extra_field_values`.`value`, '')) as 'contact_material',
+  MAX(IF(`xcart_extra_fields`.`fieldid` = 31, `xcart_extra_field_values`.`value`, '')) as 'wire_gauge',
+  MAX(IF(`xcart_extra_fields`.`fieldid` = 32, `xcart_extra_field_values`.`value`, '')) as 'Resistance_wire',
+  MAX(IF(`xcart_extra_fields`.`fieldid` = 33, `xcart_extra_field_values`.`value`, '')) as 'Axial_Load',
+  MAX(IF(`xcart_extra_fields`.`fieldid` = 34, `xcart_extra_field_values`.`value`, '')) as 'Lateral_Load',  
+  MAX(IF(`xcart_extra_fields`.`fieldid` = 35, `xcart_extra_field_values`.`value`, '')) as 'RES_lin_scale',
+  MAX(IF(`xcart_extra_fields`.`fieldid` = 36, `xcart_extra_field_values`.`value`, '')) as 'Res_rot_scale',
+  MAX(IF(`xcart_extra_fields`.`fieldid` = 37, `xcart_extra_field_values`.`value`, '')) as 'Torque',
+  MAX(IF(`xcart_extra_fields`.`fieldid` = 38, `xcart_extra_field_values`.`value`, '')) as 'Speed',
+  MAX(IF(`xcart_extra_fields`.`fieldid` = 39, `xcart_extra_field_values`.`value`, '')) as 'ID',
+  MAX(IF(`xcart_extra_fields`.`fieldid` = 40, `xcart_extra_field_values`.`value`, '')) as 'OD',
+  MAX(IF(`xcart_extra_fields`.`fieldid` = 41, `xcart_extra_field_values`.`value`, '')) as 'Qty_MULT',
+  MAX(IF(`xcart_extra_fields`.`fieldid` = 42, `xcart_extra_field_values`.`value`, '')) as 'Assem_pdf',
+  MAX(IF(`xcart_extra_fields`.`fieldid` = 43, `xcart_extra_field_values`.`value`, '')) as 'dwg_drawing',
+  MAX(IF(`xcart_extra_fields`.`fieldid` = 44, `xcart_extra_field_values`.`value`, '')) as 'Mod_num',
+  MAX(IF(`xcart_extra_fields`.`fieldid` = 45, `xcart_extra_field_values`.`value`, '')) as 'MSDS',
+  MAX(IF(`xcart_extra_fields`.`fieldid` = 46, `xcart_extra_field_values`.`value`, '')) as 'Wavelength',
+  MAX(IF(`xcart_extra_fields`.`fieldid` = 47, `xcart_extra_field_values`.`value`, '')) as 'NumAperture',
+  MAX(IF(`xcart_extra_fields`.`fieldid` = 48, `xcart_extra_field_values`.`value`, '')) as 'AcceptaceAngle',
+  MAX(IF(`xcart_extra_fields`.`fieldid` = 49, `xcart_extra_field_values`.`value`, '')) as 'FiberProfile',
+  MAX(IF(`xcart_extra_fields`.`fieldid` = 50, `xcart_extra_field_values`.`value`, '')) as 'BendRad_Momentary',
+  MAX(IF(`xcart_extra_fields`.`fieldid` = 51, `xcart_extra_field_values`.`value`, '')) as 'BendRad_longterm',
+  MAX(IF(`xcart_extra_fields`.`fieldid` = 52, `xcart_extra_field_values`.`value`, '')) as 'Non_Stocked_Time',
+  MAX(IF(`xcart_extra_fields`.`fieldid` = 53, `xcart_extra_field_values`.`value`, '')) as 'maxheatoutput',
+  MAX(IF(`xcart_extra_fields`.`fieldid` = 54, `xcart_extra_field_values`.`value`, '')) as 'Other_info',
+  MAX(IF(`xcart_extra_fields`.`fieldid` = 55, `xcart_extra_field_values`.`value`, '')) as 'Max_drive_curr',
+  MAX(IF(`xcart_extra_fields`.`fieldid` = 56, `xcart_extra_field_values`.`value`, '')) as 'Max_drive_curr_p',
+  MAX(IF(`xcart_extra_fields`.`fieldid` = 57, `xcart_extra_field_values`.`value`, '')) as 'minpower600',
+  MAX(IF(`xcart_extra_fields`.`fieldid` = 58, `xcart_extra_field_values`.`value`, '')) as 'Max_duty_cycle',
+  MAX(IF(`xcart_extra_fields`.`fieldid` = 59, `xcart_extra_field_values`.`value`, '')) as 'user_guide',
+  MAX(IF(`xcart_extra_fields`.`fieldid` = 60, `xcart_extra_field_values`.`value`, '')) as '3dmodel',
+  MAX(IF(`xcart_extra_fields`.`fieldid` = 61, `xcart_extra_field_values`.`value`, '')) as 'edrawing',
+  MAX(IF(`xcart_extra_fields`.`fieldid` = 62, `xcart_extra_field_values`.`value`, '')) as 'Capacitance',
+  MAX(IF(`xcart_extra_fields`.`fieldid` = 63, `xcart_extra_field_values`.`value`, '')) as 'Thermal_grad'
+FROM `xcart_products`
+LEFT JOIN `xcart_extra_field_values`
+ON `xcart_products`.`productid` = `xcart_extra_field_values`.`productid`
+LEFT JOIN `xcart_extra_fields`
+ON `xcart_extra_fields`.`fieldid` = `xcart_extra_field_values`.`fieldid`
+WHERE `xcart_products`.`productid` NOT IN (16904,16905,17584,16879,17107,17108)
+GROUP BY `xcart_products`.`productid`
+ORDER BY `xcart_products`.`productid` ASC
+
+/**
+ * Result:
+ * 
+ */

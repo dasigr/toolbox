@@ -1,0 +1,31 @@
+/* Main categories */
+CREATE VIEW `main_product_categories` AS
+SELECT
+  `xcart_products_categories`.`productid`,
+  `xcart_products_categories`.`categoryid`,
+  `xcart_categories`.`categoryid_path`
+FROM `xcart_products_categories`
+LEFT JOIN `xcart_categories`
+ON `xcart_categories`.`categoryid` = `xcart_products_categories`.`categoryid`
+WHERE `main` = 'Y'
+ORDER BY `xcart_products_categories`.`productid` ASC
+
+/* Additional categories */
+CREATE VIEW `additional_product_categories` AS
+SELECT
+  `xcart_products_categories`.`productid`,
+  GROUP_CONCAT(`xcart_products_categories`.`categoryid` SEPARATOR '/') AS 'additional_categories'
+FROM `xcart_products_categories`
+WHERE `main` = 'N'
+GROUP BY `xcart_products_categories`.`productid`
+ORDER BY `xcart_products_categories`.`productid` ASC
+
+/* Product Categories */
+CREATE VIEW `product_categories` AS
+SELECT
+  `main_product_categories`.`productid`,
+  CONCAT_WS('/', `main_product_categories`.`categoryid_path`, `additional_product_categories`.`additional_categories`) AS 'categories'
+FROM `main_product_categories`
+LEFT JOIN `additional_product_categories`
+ON `additional_product_categories`.`productid` = `main_product_categories`.`productid`
+ORDER BY `main_product_categories`.`productid` DESC

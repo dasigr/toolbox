@@ -1,0 +1,426 @@
+<?php
+
+/**
+ * Created by PhpStorm.
+ * User: das
+ * Date: 08/09/2017
+ * Time: 10:10 PM
+ */
+
+/**
+ * Implements hook_menu().
+ */
+function accumod_tax_menu() {
+  $items['admin/commerce/config/taxes/rates/import'] = array(
+    'title' => 'Import tax rates',
+    'description' => 'Import new tax rates.',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('accumod_tax_import_form'),
+    'access arguments' => array('administer taxes'),
+    'type' => MENU_LOCAL_ACTION,
+    'file' => 'includes/accumod_tax_ui.admin.inc',
+  );
+
+  $items['admin/commerce/config/taxes/rates/get'] = array(
+    'title' => 'Get tax rates',
+    'description' => 'Get California tax rates.',
+    'page callback' => 'accumod_tax_get_controller',
+    'access arguments' => array('administer taxes'),
+    'type' => MENU_LOCAL_ACTION,
+    'file' => 'includes/accumod_tax_ui.admin.inc',
+  );
+
+  return $items;
+}
+
+/**
+ * Implements hook_form_alter().
+ */
+function accumod_tax_form_alter(&$form, &$form_state, $form_id) {
+  if ($form_id == 'commerce_checkout_form_checkout') {
+    $accumod_module_path = drupal_get_path('module', 'accumod_tax');
+    drupal_add_js($accumod_module_path . '/js/accumod_tax.js');
+    $form['commerce_fieldgroup_pane__group_tax']['#attributes']['class'][] = 'element-hidden';
+  }
+  
+  if ($form_id == 'commerce_checkout_form_review') {
+    $accumod_module_path = drupal_get_path('module', 'accumod_tax');
+    drupal_add_css($accumod_module_path . '/css/accumod_tax.css');
+  }
+}
+
+/**
+ * Implements hook_commerce_checkout_pane_info_alter().
+ */
+function accumod_tax_commerce_checkout_pane_info_alter(&$checkout_panes) {
+  // Add custom validation for the tax exemption number field.
+  if (isset($checkout_panes['commerce_fieldgroup_pane__group_tax'])) {
+    $checkout_panes['commerce_fieldgroup_pane__group_tax']['callbacks']['checkout_form_validate'] = 'accumod_tax_pane_validate';
+  }
+  
+  // Hide tax pane for international customers.
+  if (accumod_tax_is_intl_customer() === TRUE) {
+    $checkout_panes['commerce_fieldgroup_pane__group_tax']['enabled'] = 0;
+  }
+}
+
+/**
+ * Check if customer is not from California.
+ * 
+ * @return bool
+ */
+function accumod_tax_is_intl_customer() {
+  $_path = current_path();
+  $path = explode('/', $_path);
+
+  if (count($path) != 3) {
+    return FALSE;
+  }
+
+  if ($path[0] != 'checkout') {
+    return FALSE;
+  }
+
+  if ($path[2] != 'review') {
+    return FALSE;
+  }
+
+  if (! is_numeric($path[1])) {
+    return FALSE;
+  }
+
+  $order = commerce_order_load($path[1]);
+  $shipping_address = commerce_customer_profile_load($order->commerce_customer_shipping[LANGUAGE_NONE][0]['profile_id']);
+
+  if ($shipping_address->commerce_customer_address[LANGUAGE_NONE][0]['country'] == 'US' && $shipping_address->commerce_customer_address[LANGUAGE_NONE][0]['administrative_area'] == 'CA') {
+    return FALSE;
+  }
+  
+  return TRUE;
+}
+
+/**
+ * Validate tax exemption number field.
+ */
+function accumod_tax_pane_validate(&$form, &$form_state, $checkout_pane, $order) {
+  if ($form_state['values']['commerce_fieldgroup_pane__group_tax']['field_is_tax_exempt'][LANGUAGE_NONE][0]['value'] == 1) {
+    if ($form_state['values']['customer_profile_shipping']['commerce_customer_address'][LANGUAGE_NONE][0]['administrative_area'] !== 'CA') {
+      form_set_error('field_is_tax_exempt', 'Tax exemption is not allowed in your area.');
+      return FALSE;
+    }
+    
+    if (empty($form_state['values']['commerce_fieldgroup_pane__group_tax']['field_tax_id'][LANGUAGE_NONE][0]['value'])) {
+      form_set_error('field_tax_id', 'Please enter your Tax Exemption Number.');
+      return FALSE;
+    }
+  }
+
+  return TRUE;
+}
+
+/**
+ * Get city name by postal code.
+ */
+function accumod_tax_get_city_by_postal_code($postal_code) {
+  $query = "SELECT * FROM {accumod_us_postal_codes} WHERE postal_code = :postal_code";
+  $result = db_query($query, array(':postal_code' => $postal_code));
+  $record = $result->fetchObject();
+
+  if (!$record) {
+    return;
+  }
+
+  return $record->locality;
+}
+
+/**
+ * Get tax rate.
+ */
+function accumod_tax_get_controller() {
+  $address = array(
+    'thoroughfare' => '402 West Broadway',
+    'locality' => 'San Diego',
+    'administrative_area' => 'CA',
+    'postal_code' => '92101',
+  );
+  $tax_rate = accumod_tax_get_rate_api($address);
+
+  $markup = 'Tax Rate for ' . $address['locality'] . ', ' . $address['administrative_area'] . ' is ' . $tax_rate;
+
+  $build = array(
+    '#markup' => $markup,
+  );
+
+  return $build;
+}
+
+/**
+ * Get tax rate through an API Service.
+ */
+function accumod_tax_get_rate_api($address = array()) {
+  $california_tax_rate = commerce_tax_rate_load('california_tax');
+  $tax_rate = $california_tax_rate['rate'];
+
+  if (!isset($address['thoroughfare'])) {
+    return $tax_rate;
+  }
+
+  if (!isset($address['locality'])) {
+    return $tax_rate;
+  }
+
+  if (!isset($address['administrative_area'])) {
+    return $tax_rate;
+  }
+
+  if (!isset($address['postal_code'])) {
+    return $tax_rate;
+  }
+
+  // Include NuSOAP library.
+  require_once 'nusoap/lib/nusoap.php';
+
+  $client = new nusoap_client(__DIR__ . '/rates.svc.wsdl', true);
+  $client->soap_defencoding = 'UTF-8';
+
+  $error = $client->getError();
+  if ($error) {
+    drupal_set_message('Constructor error: ' . print_r($error, 1), 'error');
+    return $tax_rate;
+  }
+
+  $address = array(
+    'StreetAddress' => $address['thoroughfare'],
+    'City' => $address['locality'],
+    'State' => $address['administrative_area'],
+    'ZipCode' => $address['postal_code'],
+  );
+  
+  $result = $client->call('GetRate', array('request' => $address));
+  
+  $error = $client->getError();
+  if ($error) {
+    watchdog('warning', 'Error: ' . print_r($error, 1));
+    return $tax_rate;
+  }
+  
+  if (! isset($result['GetRateResult'])) {
+    return $tax_rate;
+  }
+
+  $response = $result['GetRateResult']['CARateResponses']['CARateResponse'];
+  
+  if ($response['Errors']) {
+    return $tax_rate;
+  }
+
+  $tax_rate = $response['Responses']['RateInformation']['Rate'];
+  return $tax_rate;
+}
+
+/**
+ * Get Tax Rate from CA Tax Rate API Service.
+ */
+function accumod_tax_get_rate($county, $city) {
+  $california_tax_rate = commerce_tax_rate_load('california_tax');
+  $error = FALSE;
+
+  if (empty($county)) {
+    drupal_set_message('County field is missing!', 'error');
+    $error = TRUE;
+  }
+
+  if (empty($city)) {
+    drupal_set_message('City field is missing!', 'error');
+    $error = TRUE;
+  }
+
+  if ($error) {
+    return $california_tax_rate['rate'];
+  }
+
+  $query = "SELECT * FROM {accumod_tax_rate} WHERE sub_administrative_area = :county AND locality = :city";
+  $result = db_query($query, array(':county' => $county, ':city' => $city));
+  $record = $result->fetchObject();
+
+  if ($record) {
+    return $record->tax_rate;
+  }
+
+  return $california_tax_rate['rate'];
+}
+
+/**
+ * Allows modules to calculate taxes that don't determine applicability through
+ * default Rules components.
+ *
+ * An implementation might contact a web service and apply the tax to the unit
+ * price of the line item based on the returned data.
+ *
+ * @param $tax_type
+ *   The tax type object whose rates should be calculated.
+ * @param $line_item
+ *   The line item to which the taxes should be applied.
+ *
+ * @see commerce_tax_type_calculate_rates()
+ */
+function accumod_tax_commerce_tax_type_calculate_rates($tax_type, $line_item) {
+
+}
+
+/**
+ * Lets modules alter price components prior to display through the "Formatted
+ *   amount with components" display formatter.
+ *
+ * @param &$components
+ *   The array of totaled price components.
+ * @param $price
+ *   The price array the components came from.
+ * @param $entity
+ *   The entity the price belongs to.
+ *
+ * @see commerce_price_field_formatter_view()
+ */
+function accumod_tax_commerce_price_formatted_components_alter(&$components, $price, $entity) {
+  // California Tax Rate.
+  $ca_tax_rate = 0.0725;
+  foreach ($entity->commerce_order_total[LANGUAGE_NONE][0]['data']['components'] as $order_component) {
+    if ($order_component['name'] == 'tax|california_tax') {
+      $ca_tax_rate = $order_component['price']['data']['tax_rate']['rate'];
+    }
+  }
+  
+  if (isset($components['tax|california_tax'])) {
+    $components['tax|california_tax']['weight'] = 20;
+
+    foreach ($components['commerce_price_formatted_amount']['price']['data']['components'] as $component) {
+      if ($component['name'] == 'tax|california_tax') {
+        $tax_rate = (string) number_format($ca_tax_rate * 100, 3);
+        $components['tax|california_tax']['title'] = $components['tax|california_tax']['title'] . ' (' . $tax_rate . '%)';
+      }
+    }
+  }
+
+  if (isset($components['shipping'])) {
+    $components['shipping']['weight'] = 40;
+  }
+
+  if (isset($components['commerce_price_formatted_amount'])) {
+    $components['commerce_price_formatted_amount']['weight'] = 50;
+  }
+
+  $discount = 0;
+  foreach ($components['commerce_price_formatted_amount']['price']['data']['components'] as $key => $component) {
+    if ($component['name'] == 'discount') {
+      $discount = $components['commerce_price_formatted_amount']['price']['data']['components'][$key]['price']['amount'];
+      unset($components['commerce_price_formatted_amount']['price']['data']['components'][$key]);
+    }
+  }
+
+  if (isset($components['discount'])) {
+    unset($components['discount']);
+  }
+
+  $total_price = $components['commerce_price_formatted_amount']['price']['amount'];
+  $components['commerce_price_formatted_amount']['price']['amount'] = $total_price - $discount;
+}
+
+/**
+ * Get user's tax id.
+ * 
+ * @param $uid
+ */
+function accumod_tax_get_tax_id($uid) {
+  if (! is_numeric($uid)) {
+    watchdog('error', 'Invalid User ID.');
+    return FALSE;
+  }
+  
+  if ($uid == 0) {
+    return FALSE;
+  }
+  
+  $user = user_load($uid);
+  
+  if (! isset($user->field_resale[LANGUAGE_NONE])) {
+    return FALSE;
+  }
+  
+  return $user->field_resale[LANGUAGE_NONE][0]['value'];
+}
+
+/**
+ * Check if customer has custom tax rate.
+ */
+function accumod_tax_has_custom_tax_rate($mail) {
+  $user = user_load_by_mail($mail);
+  
+  if (! $user) {
+    return FALSE;
+  }
+  
+  if (empty ($user->field_tax_rate)) {
+    return FALSE;
+  }
+  
+  $custom_tax_rate = array(
+    'rate' => $user->field_tax_rate[LANGUAGE_NONE][0]['value'],
+  );
+  
+  return $custom_tax_rate;
+}
+
+/**
+ * Allows you to prepare order data before it is saved.
+ *
+ * @param $order
+ *   The order object to be saved.
+ *
+ * @see rules_invoke_all()
+ */
+function accumod_tax_commerce_order_presave($order) {
+  // @see https://www.drupal.org/node/2429595
+  // See if order has a discount.
+  if(isset($order->commerce_discounts)) {
+    $tax_rate = 0;
+    $tax_amount = 0;
+    $pdiscount = 0;
+
+    foreach ($order->commerce_order_total[LANGUAGE_NONE][0]['data']['components'] as $key => $value) {
+      if ($value['name'] == 'base_price') {
+        // Get base_price.
+        $base_price = $value['price']['amount'];
+      }
+
+      if ($value['name'] == 'tax|california_tax') {
+        // Get tax amount.
+        $tax_component_key = $key;
+        $tax_rate = $value['price']['data']['tax_rate']['rate'];
+        $tax_amount = $value['price']['amount'];
+      }
+
+      if (strpos($value['name'], 'discount|') !== false) {
+        // Get discount.
+        $pdiscount = $pdiscount + abs($value['price']['amount']);
+      }
+    }
+
+    // If there is a discount.
+    if ($pdiscount) {
+      // Calculate the correct tax amount.
+      $tvasansremise = $base_price * $tax_rate;
+      $tvaremise = $pdiscount * $tax_rate;
+      $good_tax_amount = $tvasansremise - $tvaremise;
+
+      if($tax_amount != $good_tax_amount) {
+        // Alter the tax amount.
+        $order->commerce_order_total[LANGUAGE_NONE][0]['data']['components'][$tax_component_key]['price']['amount'] = $good_tax_amount;
+
+        // Alter the order total amount.
+        $order->commerce_order_total[LANGUAGE_NONE][0]['amount'] = $order->commerce_order_total[LANGUAGE_NONE][0]['amount'] - $tvaremise;
+      }
+    }
+  }
+  
+  return $order;
+}

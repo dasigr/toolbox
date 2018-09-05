@@ -1,0 +1,4 @@
+name = Accu-Glass Staff
+description = Custom module for Accu-Glass project.
+core = 7.x
+package = Accu-Glass

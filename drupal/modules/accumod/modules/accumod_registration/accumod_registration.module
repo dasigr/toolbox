@@ -1,0 +1,65 @@
+<?php
+
+/**
+ * @file
+ * A custom module for Accu-Glass Products Inc.
+ */
+
+/**
+ * @defgroup accumod Accu-Glass Custom module
+ * @ingroup accumod_registration
+ * @{
+ * Outlines how a module can use the Batch API.
+ *
+ * Batches allow heavy processing to be spread out over several page
+ * requests, ensuring that the processing does not get interrupted
+ * because of a PHP timeout, while allowing the user to receive feedback
+ * on the progress of the ongoing operations. It also can prevent out of memory
+ * situations.
+ *
+ * The @link batch_example.install .install file @endlink also shows how the
+ * Batch API can be used to handle long-running hook_update_N() functions.
+ *
+ * Two harmless batches are defined:
+ * - batch 1: Load the node with the lowest nid 100 times.
+ * - batch 2: Load all nodes, 20 times and uses a progressive op, loading nodes
+ *   by groups of 5.
+ * @see batch
+ */
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ */
+function accumod_registration_form_user_register_form_alter(&$form, &$form_state) {
+  // Account.
+  $form['account']['name']['#size'] = 30;
+  $form['account']['mail']['#size'] = 30;
+  $form['account']['pass']['#size'] = 30;
+  
+  // Country.
+  $form['field_address'][LANGUAGE_NONE][0]['country']['#weight'] = 30;
+  $form['field_address'][LANGUAGE_NONE][0]['country']['#title_display'] = 'before';
+  $form['field_address'][LANGUAGE_NONE][0]['country']['#size'] = 30;
+  $form['field_address'][LANGUAGE_NONE][0]['country']['#attributes']['class'][] = 'clearfix';
+
+  // Street block.
+  $form['field_address'][LANGUAGE_NONE][0]['street_block']['dependent_locality'] = $form['field_address'][LANGUAGE_NONE][0]['locality_block']['dependent_locality'];
+  unset($form['field_address'][LANGUAGE_NONE][0]['locality_block']['dependent_locality']);
+
+  $form['field_address'][LANGUAGE_NONE][0]['street_block']['#weight'] = 10;
+  $form['field_address'][LANGUAGE_NONE][0]['street_block']['#attributes']['class'][] = 'clearfix';
+  $form['field_address'][LANGUAGE_NONE][0]['street_block']['dependent_locality']['#title'] = t('Address 3');
+  $form['field_address'][LANGUAGE_NONE][0]['street_block']['dependent_locality']['#access'] = TRUE;
+  $form['field_address'][LANGUAGE_NONE][0]['street_block']['dependent_locality']['#size'] = 30;
+
+  // Locality block.
+  $form['field_address'][LANGUAGE_NONE][0]['locality_block']['#weight'] = 20;
+  $form['field_address'][LANGUAGE_NONE][0]['locality_block']['administrative_area']['#size'] = 30;
+  
+  // Telephone.
+  $form['field_phone'][LANGUAGE_NONE][0]['value']['#size'] = 30;
+  $form['field_phone'][LANGUAGE_NONE][0]['value']['#required'] = TRUE;
+}
+/**
+ * @} End of "defgroup accumod_registration".
+ */

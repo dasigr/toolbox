@@ -1,0 +1,166 @@
+/**
+ * Export product variants from the old site.
+ */
+
+/* Products with Variants */
+/* def = default ? */
+/* 1068 */
+CREATE VIEW `product_variants_1` AS
+SELECT
+  `xcart_variants`.`variantid`,
+  `xcart_variants`.`productid`,
+  `xcart_variants`.`productcode`,
+  `xcart_products`.`product`,
+  `xcart_products`.`forsale`,
+  `xcart_variants`.`avail`,
+  `xcart_variants`.`weight`,
+  `xcart_pricing`.`price`,
+  `xcart_pricing`.`quantity`,
+  `xcart_pricing`.`membershipid`,
+  COALESCE(`xcart_images_W`.`image_path`, `xcart_images_P`.`image_path`) AS 'images',
+  `xcart_products`.`add_date`,
+  `xcart_products`.`provider`,
+  `xcart_products`.`distribution`,
+  `xcart_products`.`list_price`,
+  `xcart_products`.`descr`,
+  `xcart_products`.`compldescr`,
+  `xcart_products`.`fulldescr`,
+  `xcart_products`.`rating`,
+  `xcart_products`.`views_stats`,
+  `xcart_products`.`sales_stats`,
+  `xcart_products`.`del_stats`,
+  `xcart_products`.`shipping_freight`,
+  `xcart_products`.`free_shipping`,
+  `xcart_products`.`discount_avail`,
+  `xcart_products`.`min_amount`,
+  `xcart_products`.`dim_x`,
+  `xcart_products`.`dim_y`,
+  `xcart_products`.`dim_z`,
+  `xcart_products`.`low_avail_limit`,
+  `xcart_products`.`free_tax`,
+  `xcart_products`.`product_type`,
+  `xcart_products`.`manufacturerid`,
+  `xcart_products`.`return_time`,
+  `xcart_products`.`keywords`,
+  `xcart_products`.`lead_time`
+FROM `xcart_variants`
+LEFT JOIN `xcart_products`
+ON `xcart_products`.`productid` = `xcart_variants`.`productid`
+LEFT JOIN `xcart_pricing`
+ON `xcart_pricing`.`variantid` = `xcart_variants`.`variantid`
+LEFT JOIN `xcart_images_W`
+ON `xcart_images_W`.`id` = `xcart_variants`.`variantid`
+LEFT JOIN `xcart_images_P`
+ON `xcart_images_P`.`id` = `xcart_products`.`productid`
+ORDER BY `xcart_variants`.`productcode` ASC
+
+/* Product Variants 1 */
+CREATE VIEW `product_variants_1_with_options` AS
+SELECT
+  `product_variants_1`.*,
+  `product_options_fixed`.`actuator_option`,
+  `product_options_fixed`.`adhesive_backing`,
+  `product_options_fixed`.`air_side_fitting`,
+  `product_options_fixed`.`available_lengths`,
+  `product_options_fixed`.`bolt_hole`,
+  `product_options_fixed`.`bolt_holes`,
+  `product_options_fixed`.`coating_type`,
+  `product_options_fixed`.`compound`,
+  `product_options_fixed`.`connector`,
+  `product_options_fixed`.`end`,
+  `product_options_fixed`.`jacketing_options`,
+  `product_options_fixed`.`length`,
+  `product_options_fixed`.`purchased_length`,
+  `product_options_fixed`.`slit_width_options`,
+  `product_options_fixed`.`tc_junction`,
+  `product_options_fixed`.`tube_od`,
+  `product_options_fixed`.`tube_size`,
+  `product_options_fixed`.`type`,
+  `product_options_fixed`.`wire_acceptance`,
+  `product_options_fixed`.`wire_size`
+FROM `product_variants_1`
+LEFT JOIN `product_options_fixed`
+ON `product_options_fixed`.`productcode` = `product_variants_1`.`productcode`
+ORDER BY `product_variants_1`.`productcode` ASC
+
+/* Products without Variants */
+/* Discard product ids 16904,16905,17584 for they were referring to same product codes. */
+/* 1703 */
+CREATE VIEW `product_variants_2` AS
+SELECT
+  `xcart_pricing`.`variantid`,
+  `xcart_products`.`productid`,
+  `xcart_products`.`productcode`,
+  `xcart_products`.`product`,
+  `xcart_products`.`forsale`,
+  `xcart_products`.`avail`,
+  `xcart_products`.`weight`,
+  `xcart_pricing`.`price`,
+  `xcart_pricing`.`quantity`,
+  `xcart_pricing`.`membershipid`,
+  `xcart_images_P`.`image_path` AS 'images',
+  `xcart_products`.`add_date`,
+  `xcart_products`.`provider`,
+  `xcart_products`.`distribution`,
+  `xcart_products`.`list_price`,
+  `xcart_products`.`descr`,
+  `xcart_products`.`compldescr`,
+  `xcart_products`.`fulldescr`,
+  `xcart_products`.`rating`,
+  `xcart_products`.`views_stats`,
+  `xcart_products`.`sales_stats`,
+  `xcart_products`.`del_stats`,
+  `xcart_products`.`shipping_freight`,
+  `xcart_products`.`free_shipping`,
+  `xcart_products`.`discount_avail`,
+  `xcart_products`.`min_amount`,
+  `xcart_products`.`dim_x`,
+  `xcart_products`.`dim_y`,
+  `xcart_products`.`dim_z`,
+  `xcart_products`.`low_avail_limit`,
+  `xcart_products`.`free_tax`,
+  `xcart_products`.`product_type`,
+  `xcart_products`.`manufacturerid`,
+  `xcart_products`.`return_time`,
+  `xcart_products`.`keywords`,
+  `xcart_products`.`lead_time`
+FROM `xcart_products`
+LEFT JOIN `xcart_pricing`
+ON `xcart_pricing`.`productid` = `xcart_products`.`productid`
+LEFT JOIN `xcart_images_P`
+ON `xcart_images_P`.`id` = `xcart_products`.`productid`
+WHERE `xcart_products`.`productid` NOT IN (
+  SELECT `product_variants_1`.`productid`
+  FROM `product_variants_1`
+)
+AND `xcart_products`.`productid` NOT IN (16904,16905,17584,16879,17107,17108)
+ORDER BY `xcart_products`.`productcode` ASC
+
+/* Product Variants 2 */
+CREATE VIEW `product_variants_2_with_options` AS
+SELECT
+  `product_variants_2`.*,
+  `product_options_fixed`.`actuator_option`,
+  `product_options_fixed`.`adhesive_backing`,
+  `product_options_fixed`.`air_side_fitting`,
+  `product_options_fixed`.`available_lengths`,
+  `product_options_fixed`.`bolt_hole`,
+  `product_options_fixed`.`bolt_holes`,
+  `product_options_fixed`.`coating_type`,
+  `product_options_fixed`.`compound`,
+  `product_options_fixed`.`connector`,
+  `product_options_fixed`.`end`,
+  `product_options_fixed`.`jacketing_options`,
+  `product_options_fixed`.`length`,
+  `product_options_fixed`.`purchased_length`,
+  `product_options_fixed`.`slit_width_options`,
+  `product_options_fixed`.`tc_junction`,
+  `product_options_fixed`.`tube_od`,
+  `product_options_fixed`.`tube_size`,
+  `product_options_fixed`.`type`,
+  `product_options_fixed`.`wire_acceptance`,
+  `product_options_fixed`.`wire_size`
+FROM `product_variants_2`
+LEFT JOIN `product_options_fixed`
+ON `product_options_fixed`.`productcode` = `product_variants_2`.`productcode`
+ORDER BY `product_variants_2`.`productcode` ASC

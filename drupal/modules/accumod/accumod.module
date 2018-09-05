@@ -1,0 +1,1193 @@
+<?php
+
+/**
+ * @file
+ * A custom module for Accu-Glass Products Inc.
+ */
+
+/**
+ * @defgroup accumod Accu-Glass Custom module
+ * @ingroup accumod
+ * @{
+ * Outlines how a module can use the Batch API.
+ *
+ * Batches allow heavy processing to be spread out over several page
+ * requests, ensuring that the processing does not get interrupted
+ * because of a PHP timeout, while allowing the user to receive feedback
+ * on the progress of the ongoing operations. It also can prevent out of memory
+ * situations.
+ *
+ * The @link batch_example.install .install file @endlink also shows how the
+ * Batch API can be used to handle long-running hook_update_N() functions.
+ *
+ * Two harmless batches are defined:
+ * - batch 1: Load the node with the lowest nid 100 times.
+ * - batch 2: Load all nodes, 20 times and uses a progressive op, loading nodes
+ *   by groups of 5.
+ * @see batch
+ */
+
+/**
+ * Implements hook_menu().
+ */
+function accumod_menu() {
+  $items['admin/commerce/orders/%/get-invoice'] = array(
+    'title' => t('Invoice'),
+    'page callback' => 'accumod_get_invoice',
+    'page arguments' => array(3),
+    'access arguments' => array('administer commerce_product entities'),
+  );
+
+  return $items;
+}
+
+/**
+ * Implements hook_search_preprocess().
+ *
+ * @param $text
+ * @return mixed
+ */
+function accumod_search_preprocess($text) {
+  if (accumod_is_custom_product($text)) {
+    drupal_set_message('This is a custom part — please contact sales for more information.', 'status');
+  }
+
+  // Do processing on $text
+  return $text;
+}
+
+/**
+ * Get order invoice.
+ *
+ * @param $oid
+ *   Order ID
+ */
+function accumod_get_invoice($oid) {
+  if (!is_numeric($oid)) {
+    drupal_set_message('Invalid Order ID.', 'error');
+    return array();
+  }
+
+  $output = array();
+  $order = commerce_order_load($oid);
+
+  if ($order) {
+    $output['#markup'] = accumod_invoice_email($order);
+    return $output;
+  }
+  else {
+    drupal_set_message('Could not load order ' . $oid . '.', 'error');
+    return $output;
+  }
+}
+
+/**
+ * Implements hook_menu_alter().
+ */
+function accumod_menu_alter(&$items) {
+  $items['user/%/orders']['title'] = 'List Orders';
+}
+
+/**
+ * Implements hook_menu_breadcrumb_alter().
+ */
+function accumod_menu_breadcrumb_alter(&$active_trail, $item) {
+	
+	if (drupal_is_front_page()) {
+		return;
+	}
+  
+	$params = $_GET;
+  
+	if (! isset($params['category_id'])) {
+		return;
+	}
+
+	$node 			= reset($item['page_arguments']);
+	$node_wrapper 	= entity_metadata_wrapper('node', $node);
+
+	if ($node_wrapper->getBundle() != 'product_display') {
+		return;
+	}
+  
+	$categories			= $node_wrapper->field_product_category->value();
+	$category 			= reset($categories);
+
+	$parents 			= taxonomy_get_parents($category->tid);
+	$parent_category 	= reset($parents);
+
+	if ($params['category_id'] === $category->tid) {
+		return;
+	}
+	
+	$selected_category 			= taxonomy_term_load($params['category_id']);
+	$selected_parent 			= taxonomy_get_parents($selected_category->tid);
+	$selected_parent_category	= reset($selected_parent);
+
+	// Alter breadcrumb to set the breadcrumb trail according the selected
+	foreach ($active_trail as $key => $crumb) {
+	  if (isset($crumb['map'])) {
+      //Replace child
+      if($crumb['map'][0] == 'taxonomy' && $crumb['map'][2] == $category->tid){
+        $term_url = taxonomy_term_uri($selected_category);
+
+        //INSERT THE REPLACEMENT CRUMB
+        $active_trail[$key] = array(
+          'title' => $selected_category->name,
+          'href' => drupal_lookup_path('alias',$term_url['path'])
+        );
+      }
+
+      //Replace parent
+      if($crumb['map'][0] == 'taxonomy' && $crumb['map'][2] == $parent_category->tid){
+        $tax_url = taxonomy_term_uri($selected_parent_category);
+
+        //INSERT THE REPLACEMENT CRUMB
+        $active_trail[$key] = array(
+          'title' => $selected_parent_category->name,
+          'href' => drupal_lookup_path('alias',$tax_url['path'])
+        );
+      }
+    }
+	}
+}
+
+/**
+ * Allows modules to alter the predefined address formats.
+ *
+ * @param $address_formats
+ *   The array of all predefined address formats.
+ *
+ * @see addressfield_get_address_format()
+ */
+function accumod_addressfield_address_formats_alter(&$address_formats) {
+  // Enable display of dependent locality field.
+  $address_formats['US']['used_fields'][] = 'dependent_locality';
+}
+
+/**
+ * Checked if the searched keyword is a custom product.
+ * Custom product has a pattern 6xxxxx or 6-xxxxxx
+ *
+ * @param $text
+ *   The keyword being searched.
+ * @return int
+ *   Return 1 if it is a custom product, 0 if not.
+ */
+function accumod_is_custom_product($text) {
+  $pattern = '/^6[0-9|-][0-9]{4}([0-9]{2})?/';
+  return preg_match($pattern, $text);
+}
+
+/**
+ * Implements hook_form_validate().
+ * 
+ * || preg_match('/\s/',$form_state['values']['search_product'])
+ * Please enter at least 4 characters and without white spaces.
+ */
+function accumod_search_validate($form, &$form_state) {
+  if (isset($form_state['values']['search_product'])) {
+    if ( ( !empty($form_state['values']['search_product']) && strlen($form_state['values']['search_product']) < 4 ) || preg_match('/[^a-z_\-0-9]+[~!@#$%&*()+\/ ]/i',$form_state['values']['search_product']) ) {
+      form_set_error('search_product', 'Please enter at least 4 alphanumeric characters.');
+    }
+  }
+
+  if (isset($form_state['values']['search_product'])) {
+    if (!empty($form_state['values']['search_product']) && accumod_is_custom_product($form_state['values']['search_product'])) {
+      form_set_error('search_product', 'This is a custom part — please contact sales for more information.');
+    }
+  }
+}
+
+/**
+ * Implements hook_form_alter().
+ */
+function accumod_form_alter(&$form, &$form_state, $form_id) {
+  // Edit user.
+  if ($form_id == 'user_profile_form') {
+    $form['field_phone'][LANGUAGE_NONE][0]['value']['#required'] = TRUE;
+  }
+  
+  // Search form.
+  if ($form_id == 'views_exposed_form' && $form['#id'] == 'views-exposed-form-display-products-page') {
+    $form['#validate'][] = 'accumod_search_validate';
+  }
+
+  // Add to Cart form.
+  if (strpos($form_id, 'commerce_cart_add_to_cart_form_') === 0) {
+    if (isset($form['attributes'])) {
+      $attributes = array_keys($form['attributes']);
+      foreach ($attributes as $attribute) {
+        if (strpos($attribute, 'field_') === 0) {
+          $form['attributes'][$attribute]['#required'] = TRUE;
+        }
+      }
+    }
+
+    if (isset($form['product_id'])) {
+      $product = commerce_product_load($form['product_id']['#value']);
+      if (!empty($product->field_qty_multiplier)) {
+        $form['quantity']['#field_suffix'] = t($product->field_qty_multiplier[LANGUAGE_NONE][0]['safe_value']);
+      }
+    }
+  }
+
+  // Searchbox from
+  if ($form_id == 'views_exposed_form' && $form['#id'] == 'views-exposed-form-display-products-page') {
+    $form['search_product']['#attributes']['placeholder'] = 'Type text and hit enter';
+  }
+  
+  if ($form_id == 'views_exposed_form') {
+	  unset($form['#validate']);
+    $form['#validate'] = array('accumod_search_validate');
+  }
+
+  // Send to Colleague form
+  if ($form_id == 'webform_client_form_3447') {
+    // Placeholder.
+    $form['submitted']['sender_first_name']['#attributes']['placeholder'] = $form['submitted']['sender_first_name']['#title'];
+    $form['submitted']['sender_last_name']['#attributes']['placeholder'] = $form['submitted']['sender_last_name']['#title'];
+    $form['submitted']['sender_e_mail']['#attributes']['placeholder'] = $form['submitted']['sender_e_mail']['#title'];
+    $form['submitted']['to_e_mail']['#attributes']['placeholder'] = $form['submitted']['to_e_mail']['#title'];
+    $form['submitted']['comments']['#attributes']['placeholder'] = $form['submitted']['comments']['#title'];
+
+    global $user;
+    if ($user->uid !== 0) {
+      // Not an anonymous user.
+      $account = user_load($user->uid);
+      
+      // Set default values.
+      $form['submitted']['sender_first_name']['#default_value'] = !empty($account->field_first_name) ? $account->field_first_name[LANGUAGE_NONE][0]['value'] : null;
+      $form['submitted']['sender_last_name']['#default_value'] = !empty($account->field_last_name) ? $account->field_last_name[LANGUAGE_NONE][0]['value'] : null;
+      $form['submitted']['sender_e_mail']['#default_value'] = !empty($account->mail) ? $account->mail : null;
+    }
+  }
+
+  // Contact Us and Request a catalog form
+  if ($form_id == 'webform_client_form_1751' || $form_id == 'webform_client_form_1749') {
+    global $user;
+    $account = user_load($user->uid);
+    
+    // Set default values.
+    $form['submitted']['mail']['#default_value'] = $account->mail;
+    $form['submitted']['phone']['#default_value'] = ($account->field_phone) ? $account->field_phone[LANGUAGE_NONE][0]['value'] : '';
+    $form['submitted']['fax']['#default_value'] = ($account->field_fax) ? $account->field_fax[LANGUAGE_NONE][0]['value'] : '';
+    $form['submitted']['website']['#default_value'] = ($account->field_website) ? $account->field_website[LANGUAGE_NONE][0]['value'] : '';
+
+    $profile_id = commerce_addressbook_get_default_profile_id($user->uid, 'shipping');
+    if ($profile_id) {
+      $profile = commerce_customer_profile_load($profile_id);
+      $form['submitted']['firstname']['#default_value'] = $profile->commerce_customer_address[LANGUAGE_NONE][0]['first_name'];
+      $form['submitted']['lastname']['#default_value'] = $profile->commerce_customer_address[LANGUAGE_NONE][0]['last_name'];
+      $form['submitted']['company']['#default_value'] = $profile->commerce_customer_address[LANGUAGE_NONE][0]['organisation_name'];
+      
+      $form['submitted']['address']['#address']['country'] = $profile->commerce_customer_address[LANGUAGE_NONE][0]['country'];
+      $form['submitted']['address']['#address']['thoroughfare'] = $profile->commerce_customer_address[LANGUAGE_NONE][0]['thoroughfare'];
+      $form['submitted']['address']['#address']['premise'] = $profile->commerce_customer_address[LANGUAGE_NONE][0]['premise'];
+      $form['submitted']['address']['#address']['dependent_locality'] = $profile->commerce_customer_address[LANGUAGE_NONE][0]['dependent_locality'];
+      $form['submitted']['address']['#address']['locality'] = $profile->commerce_customer_address[LANGUAGE_NONE][0]['locality'];
+      $form['submitted']['address']['#address']['administrative_area'] = $profile->commerce_customer_address[LANGUAGE_NONE][0]['administrative_area'];
+      $form['submitted']['address']['#address']['postal_code'] = $profile->commerce_customer_address[LANGUAGE_NONE][0]['postal_code'];
+    }
+    
+    unset($form['submitted']['title']['#empty_value']);
+    $form['submitted']['title']['#default_value'] = 'mr';
+
+    $form['submitted']['firstname']['#size'] =
+    $form['submitted']['lastname']['#size'] =
+    $form['submitted']['company']['#size'] =
+    $form['submitted']['mail']['#size'] =
+    $form['submitted']['website']['#size'] =
+    $form['submitted']['phone']['#size'] =
+    $form['submitted']['fax']['#size'] =
+    $form['submitted']['subject']['#size'] = 30;
+
+    $form['submitted']['address']['country']['#required'] = 1;
+    $form['submitted']['address']['locality_block']['dependent_locality']['#title'] = t('Address 3');
+    $form['submitted']['address']['locality_block']['dependent_locality']['#size'] = 30;
+
+    unset($form['submitted']['department']['#empty_value']);
+    $form['submitted']['department']['#default_value'] = 'all';
+  }
+
+  // Wishlist
+  if ($form_id == 'commerce_wishlist_share') {
+    $form['commerce_wishlist_visibility'][LANGUAGE_NONE]['#type'] = 'hidden';
+    $form['commerce_wishlist_visibility'][LANGUAGE_NONE]['#default_value'] = 1; // Protected
+
+    $wishlist = $form_state['wishlist'];
+    $account = user_load($wishlist->uid);
+    $form_state['account'] = $account;
+    $form_state['wishlist_share_url'] = url(commerce_wishlist_get_wishlist_url($wishlist), array('absolute' => TRUE));
+
+    $form['sender_firstname'] = array(
+      '#type' => 'textfield',
+      '#title' => t('Sender First Name'),
+      '#title_display' => 'invisible',
+      '#required' => TRUE,
+      '#default_value' => !empty($account->field_first_name) ? $account->field_first_name[LANGUAGE_NONE][0]['value'] : null,
+      '#size' => 30,
+      '#maxlength' => 120,
+      '#weight' => 0,
+      '#attributes' => array('placeholder' => t('Sender First Name')),
+    );
+
+    $form['sender_lastname'] = array(
+      '#type' => 'textfield',
+      '#title' => t('Sender Last Name'),
+      '#title_display' => 'invisible',
+      '#required' => TRUE,
+      '#default_value' => !empty($account->field_last_name) ? $account->field_last_name[LANGUAGE_NONE][0]['value'] : null,
+      '#size' => 30,
+      '#maxlength' => 120,
+      '#weight' => 1,
+      '#attributes' => array('placeholder' => t('Sender Last Name')),
+    );
+
+    $form['sender_email'] = array(
+      '#type' => 'textfield',
+      '#title' => t('Sender E-Mail'),
+      '#title_display' => 'invisible',
+      '#required' => TRUE,
+      '#default_value' => !empty($account->mail) ? $account->mail : null,
+      '#size' => 30,
+      '#maxlength' => 120,
+      '#weight' => 2,
+      '#attributes' => array('placeholder' => t('Sender E-Mail')),
+    );
+
+    $form['recipient_email'] = array(
+      '#type' => 'textfield',
+      '#title' => t('To E-Mail'),
+      '#title_display' => 'invisible',
+      '#required' => TRUE,
+      '#size' => 30,
+      '#maxlength' => 120,
+      '#weight' => 3,
+      '#attributes' => array('placeholder' => t('To E-Mail')),
+    );
+
+    $form['sender_message'] = array(
+      '#type' => 'textarea',
+      '#title' => t('Message'),
+      '#title_display' => 'invisible',
+      '#required' => TRUE,
+      '#default_value' => t(''),
+      '#weight' => 4,
+      '#attributes' => array('placeholder' => t('Message')),
+    );
+
+    $form['actions']['submit']['#value'] = t('Send to Colleague');
+    array_unshift($form['#submit'], 'accumod_share_to_colleague');
+  }
+}
+
+/**
+ * Send message to colleague.
+ */
+function accumod_share_to_colleague($form, &$form_state) {
+  // Get account of the sender.
+  $account = $form_state['account'];
+
+  // Set email variables.
+  $params['site_name'] = 'Accu-Glass Products, Inc.';
+  $params['sender_firstname'] = $form_state['values']['sender_firstname'];
+  $params['sender_lastname'] = $form_state['values']['sender_lastname'];
+  $params['sender_message'] = $form_state['values']['sender_message'];
+  $params['wishlist_share_url'] = $form_state['wishlist_share_url'];
+
+  if (drupal_mail('accumod', 'share_to_colleague', $form_state['values']['recipient_email'], user_preferred_language($account), $params)) {
+    drupal_set_message('Wishlist shared to colleague.');
+  }
+}
+
+/**
+ * Implements hook_mail().
+ */
+function accumod_mail($key, &$message, $params) {
+  $options = array(
+    'langcode' => $message['language']->language,
+  );
+  
+  switch($key) {
+    case 'share_to_colleague':
+      global $user;
+      
+      // Shared products table.
+      $wishlist	= commerce_wishlist_order_load($user->uid);
+      $products_table = commerce_embed_view('email_wishlist_page', 'default', array($wishlist->order_id));
+      
+      // CSS style.
+      $wishlist_style = 'body{font-family: Arial, Calibri, sans-serif;font-size: 12px;line-height: 1.5em;color: #333333;}th{color: #55595C;}td{vertical-align: top;}';
+      $wishlist_style .= '.view-email-wishlist-page table { display: table;width: 100%; }.view-email-wishlist-page table th { text-align: left; padding: 2px 4px; }.view-email-wishlist-page table td { text-align: left; padding: 2px 4px; }';
+      $wishlist_style .= '.contextual-links-wrapper{display:none;}table.views-table{border-collapse:collapse;}table.views-table,table.views-table th,table.views-table td{border: 1px solid black;}';
+      $message['css'] = $wishlist_style;
+      
+      // Subject.
+      $message['subject'] = t('Your colleague have shared you a list of products from site_name', $params, $options);
+      
+      // Message.
+      $body = '<style>' . $wishlist_style . '</style>';
+      $body .= t("Your colleague, sender_firstname sender_lastname, has shared you a list of products from site_name\n", $params, $options);
+      $body .= $products_table;
+      $body .= t("You may view the list at\n wishlist_share_url.\n\n", $params, $options);
+      $body .= t("------------------------------------------------------------\n\n");
+      $body .= t("Your colleague's message:\n\n");
+      $body .= t("sender_message\n\n", $params, $options);
+      $message['body'][] = $body;
+      
+      break;
+      
+    case 'share_to_colleague_confirm_buy':
+      $wishlist_style = 'table.views-table{border-collapse:collapse;}table.views-table,table.views-table th,table.views-table td{border: 1px solid black;}';
+      $message['css'] = $wishlist_style;
+      
+      $message['subject'] = t('Your colleague has bought item(s) of your wish list from site_name', $params, $options);
+      
+      $body = '<style>' . $wishlist_style . '</style>';
+      $body .= t("Your colleague, has bought item(s) of your wish list from site_name.\n", $params, $options);
+      $body .= $params['sender_message'];
+      $message['body'][] = $body;
+      
+      break;
+  }
+}
+
+/**
+ * Send mail.
+ */
+function accumod_mail_send(array $values = array()) {
+  $module = $values['module'];
+  $key = $values['key'];
+  $to = $values['to'];
+  $from = $values['from'];
+  $language = isset($values['lang']) ? $values['lang'] : language_default();
+  
+  $params = array(
+    'subject' => $values['subject'],
+    'body' => $values['body'],
+  );
+  
+  if (array_key_exists('headers', $values)) {
+    $params['headers'] = $values['headers'];
+  }
+  
+  $send = TRUE;
+  $mail = drupal_mail($module, $key, $to, $language, $params, $from, $send);
+  if ($mail['result']) {
+    return TRUE;
+  }
+  else {
+    $error_msg = 'Failed to send the email in accumod module.';
+    watchdog('accumod-mail', $error_msg, array(), WATCHDOG_ALERT);
+    return FALSE;
+  }
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ */
+function accumod_form_commerce_quickorder_form_alter(&$form) {
+  $form['info'] = array(
+    '#markup' => t('To quickly order items, enter the part numbers below.'),
+    '#prefix' => '<div class="info">',
+    '#suffix' => '</div>',
+    '#weight' => 0,
+  );
+
+  $form['table']['#weight'] = 5;
+  $form['item_actions']['#weight'] = 10;
+  $form['item_actions']['add_item']['#value'] = t('Add more items');
+  $form['actions']['#weight'] = 20;
+
+  $form['action_wrapper'] = array(
+    '#type' => 'container',
+    '#attributes' => array('class' => array('quick-order-actions')),
+    '#weight' => 20,
+  );
+  $form['action_wrapper'][] = $form['item_actions'];
+  $form['action_wrapper'][] = $form['actions'];
+  unset($form['item_actions']);
+  unset($form['actions']);
+}
+
+/**
+ * Implements hook_file_mimetype_mapping_alter().
+ */
+function accumod_file_mimetype_mapping_alter(&$mapping) {
+  // Add support for eprt.
+  $new_mappings['eprt'] = 'application/eprt';
+
+  foreach ($new_mappings as $extension => $mime_type) {
+    if (!in_array($mime_type, $mapping['mimetypes'])) {
+      // If the mime type does not already exist, add it.
+      $mapping['mimetypes'][] = $mime_type;
+    }
+
+    // Get the index of the mime type and assign the extension to that key.
+    $index = array_search($mime_type, $mapping['mimetypes']);
+    $mapping['extensions'][$extension] = $index;
+  }
+}
+
+/**
+ * Get line item options.
+ *
+ * @param $line_item_id
+ * @return array
+ */
+function accumod_get_line_item_options_by_line_item_id($line_item_id) {
+  $line_item = commerce_line_item_load($line_item_id);
+  $option_sets = commerce_option_load_by_line_item($line_item_id);
+
+  // Get selected options.
+  $line_item_options = array();
+  foreach ($option_sets as $option_set) {
+    $set_id = $option_set->set_id;
+    $options = unserialize($line_item->$set_id);
+
+    $field_names = array_keys($options);
+    foreach ($field_names as $field_name) {
+      $line_item_options[$field_name] = array(
+        'label' => field_extractor_field_label($field_name),
+        'value' => $options[$field_name][LANGUAGE_NONE][0]['value'],
+      );
+    }
+  }
+
+  return $line_item_options;
+}
+
+/**
+ * Build an invoice email.
+ *
+ * @param $order
+ *   Commerce Order
+ *
+ * @return string
+ */
+function accumod_invoice_email($order) {
+  global $base_url;
+
+  module_load_include('inc', 'addressfield', 'addressfield.address_formats');
+  module_load_include('inc', 'field_extractor', 'views/field_extractor.views');
+
+  // User.
+  $user = user_load($order->uid);
+
+  // Address information.
+  $billing = commerce_customer_profile_load($order->commerce_customer_billing[LANGUAGE_NONE][0]['profile_id']);
+  $shipping = commerce_customer_profile_load($order->commerce_customer_shipping[LANGUAGE_NONE][0]['profile_id']);
+
+  // Shipping method.
+  $shipping_method = '';
+
+  // Line items.
+  $rows = '';
+  $sum = 0;
+  foreach($order->commerce_line_items[LANGUAGE_NONE] as $val) {
+    $line_item = commerce_line_item_load($val['line_item_id']);
+
+    switch ($line_item->type) {
+      case 'product':
+        $_product = commerce_product_load($line_item->commerce_product['und'][0]['product_id']);
+
+        // Get selected options.
+        $line_item_options = accumod_get_line_item_options_by_line_item_id($line_item->line_item_id);
+
+        // Build line item options.
+        $line_item_options_markup = '';
+        if (!empty($line_item_options)) {
+          foreach ($line_item_options as $line_item_option) {
+            $line_item_options_markup .= '<span>'.$line_item_option['label'].': ';
+            $line_item_options_markup .= $line_item_option['value'].'</span><br/>';
+          }
+        }
+
+        $product = commerce_product_load($line_item->commerce_product[LANGUAGE_NONE][0]['product_id']);
+        $rows .= '
+        <tr>
+          <td valign="middle"><b><font style="FONT-SIZE: 11px">' . $product->title . '</font></b><br>'.'Part Number: '.$product->sku.'<br>'.$line_item_options_markup.'</td>
+          <td nowrap="nowrap" align="right"><span style="WHITE-SPACE: nowrap">' . commerce_currency_format($line_item->commerce_unit_price[LANGUAGE_NONE][0]['amount'], 'USD') .  '</span>&nbsp;&nbsp;</td>
+          <td align="right">' . (int) $line_item->quantity . '</td>
+          <td nowrap="nowrap" align="right"><span style="WHITE-SPACE: nowrap">' . commerce_currency_format($line_item->commerce_total[LANGUAGE_NONE][0]['amount'], 'USD') .  '</span>&nbsp;&nbsp;</td>
+        </tr>';
+        break;
+
+      case 'shipping':
+        $shipping_method = $line_item->line_item_label;
+        break;
+    }
+  }
+  
+  // Shipping details.
+  $shipping_details = '';
+  if (intershipper_shipping_details($order->commerce_line_items[LANGUAGE_NONE]) !== FALSE) {
+    $shipping_details_all = intershipper_shipping_details($order->commerce_line_items[LANGUAGE_NONE]);
+    $shipping_details = $shipping_details_all['#markup'];
+  }
+
+  // Payment method.
+  $payment = explode("|", $order->data['payment_method']);
+
+  // Customer information.
+  $field_company = (!empty($user->field_company)) ? $user->field_company[LANGUAGE_NONE][0]['value'] : '';
+  $field_firstname = (!empty($user->field_first_name)) ? $user->field_first_name[LANGUAGE_NONE][0]['value'] : '';
+  $field_lastname = (!empty($user->field_last_name)) ? $user->field_last_name[LANGUAGE_NONE][0]['value'] : '';
+  $user_title = (!empty($user->field_title)) ? $user->field_title[LANGUAGE_NONE][0]['value'] : '';
+
+  // Store address.
+  $store_address = '<b>Accu-Glass Products, Vacuum Components</b><br>';
+  $store_address .= '25047 Anza Drive, Valencia<br>';
+  $store_address .= '91355, California<br>';
+  $store_address .= 'United States<br>';
+  $store_address .= 'CALL US: (818) 365-4215<br>';
+  $store_address .= 'Fax: (818) 365-7074<br>';
+  $store_address .= 'E-Mail: weborder@accuglassproducts.com<br>';
+
+  // Order details.
+  $order_status = commerce_order_status_get_title($order->status);
+  $payment_method = commerce_payment_method_get_title('title', $payment[0]);
+  $order_date = format_date($order->created, 'custom', "m/d/Y h:i:s A");
+
+  $order_details = '<b>Date:</b> ' . $order_date . '<br>';
+  $order_details .= '<b>Order id:</b> #' . $order->order_number . '<br>';
+  $order_details .= '<b>Order status:</b> ' . $order_status . '<br>';
+  $order_details .= '<b>Payment method:</b><br> ' . $payment_method;
+
+  $new_line_items = '';
+  foreach($order->commerce_line_items[LANGUAGE_NONE] as $val) {
+    $line_item = commerce_line_item_load($val['line_item_id']);
+    if ($line_item->type == 'product') {
+      $new_line_items .= views_embed_view('commerce_line_item_table', 'default', ($line_item->line_item_id));
+    }
+  }
+
+  $total = commerce_currency_format($order->commerce_order_total[LANGUAGE_NONE][0]['amount'], $order->commerce_order_total[LANGUAGE_NONE][0]['currency_code']);
+
+  foreach ($order->commerce_order_total[LANGUAGE_NONE][0]['data']['components'] as $component) {
+    if ($component['name'] == 'base_price') {
+      $subtotal = commerce_currency_format($component['price']['amount'], $component['price']['currency_code']);
+    }
+
+    if (strpos($component['name'], 'discount') !== FALSE) {
+      $discount = array(
+        'amount' => commerce_currency_format($component['price']['amount'], $component['price']['currency_code']),
+      );
+    }
+
+    if (strpos($component['name'], 'tax') !== FALSE) {
+      $tax = array(
+        'display_title' => $component['price']['data']['tax_rate']['display_title'],
+        'amount' => commerce_currency_format($component['price']['amount'], $component['price']['currency_code']),
+      );
+    }
+
+    if ($component['name'] == 'shipping') {
+      $shipping_fee = commerce_currency_format($component['price']['amount'], $component['price']['currency_code']);
+    }
+  }
+
+  // CSS style.
+  $output = '
+  <style>
+    #line-items {
+    }
+    #line-items table {
+      display: table;
+      width: 100%;
+      box-sizing: border-box;
+      clear: both;
+    }
+    #line-items table tr th {
+      text-align: left;
+    }
+    #line-items table tr th.views-field,
+    #line-items table tr td.views-field {
+      text-align: right;
+    }
+  </style>
+  ';
+
+  // Header.
+  $output .= '
+  <table width="100%" cellspacing="0" cellpadding="0">
+    <tbody>
+      <tr>
+        <td>
+  ';
+
+  // Order details.
+  $output .= '
+  <table id="heading" width="100%" cellspacing="0" cellpadding="0" border="0">
+    <tbody>
+      <tr>
+        <td valign="top"><br><br><img alt="" src="' . $base_url . '/sites/default/files/accuglass_logo_small.gif"></td>
+        <td width="100%">
+          <table width="100%" cellspacing="0" cellpadding="2">
+            <tbody>
+              <tr>
+                <td width="30">&nbsp;</td>
+                <td valign="top">
+                  <font style="FONT-SIZE: 28px"><b style="text-transform: uppercase;">Invoice</b></font>
+                </td>
+                <td>&nbsp;</td>
+              </tr>
+              <tr>
+                <td width="30">&nbsp;</td>
+                <td valign="top">'.$order_details.'</td>
+                <td valign="top" align="right">' . $store_address . '</td>
+              </tr>
+            </tbody>
+          </table>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+  <table width="100%" cellspacing="0" cellpadding="0" border="0">
+    <tbody>
+      <tr>
+        <td><img width="100%" height="2" alt="" src="' . $base_url . '/sites/default/files/spacer_black.gif"></td>
+      </tr>
+    </tbody>
+  </table>
+  ';
+
+  // Customer information.
+  $output .= '
+  <br>
+  <table id="customer-information" width="45%" cellspacing="0" cellpadding="0" border="0">
+    <tbody>
+      <tr>
+        <td><b>Company:</b></td>
+        <td>' . $field_company . '</td>
+      </tr>
+      <tr>
+        <td><b>Resale/Tax<br>Exemption number:</b></td>
+        <td>' . (isset($order->field_tax_id[LANGUAGE_NONE][0]['safe_value']) ? $order->field_tax_id[LANGUAGE_NONE][0]['safe_value'] : '') . '</td>
+      </tr>
+      <tr>
+        <td><b>Purchase Order<br>Purchase Order number:</b></td>
+        <td>' . (isset($order->field_add_pon[LANGUAGE_NONE][0]['safe_value']) ? $order->field_add_pon[LANGUAGE_NONE][0]['safe_value'] : '') . '</td>
+      </tr>
+      <tr>
+        <td nowrap="nowrap"><b>Name:</b></td>
+        <td>' . $user_title . ' ' . $billing->commerce_customer_address[LANGUAGE_NONE][0]['name_line'] . '</td>
+      </tr>
+      <tr>
+        <td><b>Phone:</b></td>
+        <td>' . (isset($user->field_phone[LANGUAGE_NONE][0]['value']) ? $user->field_phone[LANGUAGE_NONE][0]['value'] : '') . '</td>
+      </tr>
+      <tr>
+        <td><b>Fax:</b></td>
+        <td>' . (isset($user->field_fax[LANGUAGE_NONE][0]['value']) ? $user->field_fax[LANGUAGE_NONE][0]['value']  : '' ) . '</td>
+      </tr>
+      <tr>
+        <td><b>E-Mail:</b></td>
+        <td>' . $user->mail . '</td>
+      </tr>
+      <tr>
+        <td><b>URL:</b></td>
+        <td>' . (isset($user->field_website[LANGUAGE_NONE][0]['value']) ? $user->field_website[LANGUAGE_NONE][0]['value'] : '') . '</td>
+      </tr>
+      <tr>
+        <td colspan="3"></td>
+      </tr>
+    </tbody>
+  </table>
+  ';
+  
+  // Shipping details.
+  $output .= $shipping_details;
+
+  // Address information.
+  $output .= '
+  <br>
+  <table id="address-information" width="100%" cellspacing="0" cellpadding="0" border="0">
+    <tbody>
+  ';
+  $output .= '
+  <tr>
+    <td width="45%" height="25"><b>Billing Address (as it appears on your credit card statement)</b></td>
+    <td width="10%">&nbsp;</td>
+    <td width="45%" height="25"><b>Shipping Address</b></td>
+  </tr>
+  <tr>
+    <td><img width="100%" height="2" alt="" src="' . $base_url . '/sites/default/files/spacer_black.gif"></td>
+    <td></td>
+    <td><img width="100%" height="2" alt="" src="' . $base_url . '/sites/default/files/spacer_black.gif"></td>
+  </tr>
+  <tr>
+    <td colspan="3"></td>
+  </tr>
+  <tr>
+    <td>
+      <table width="100%" cellspacing="0" cellpadding="0" border="0">
+        <tbody>
+          <tr>
+            <td>' . $billing->commerce_customer_address[LANGUAGE_NONE][0]['name_line'] . '</td>
+          </tr>
+          <tr>
+            <td>' . $billing->commerce_customer_address[LANGUAGE_NONE][0]['organisation_name'] . '</td>
+          </tr>
+          <tr>
+            <td>' . $billing->commerce_customer_address[LANGUAGE_NONE][0]['thoroughfare'] . '</td>
+          </tr>
+          <tr>
+            <td>' . $billing->commerce_customer_address[LANGUAGE_NONE][0]['premise'] . '</td>
+          </tr>
+          <tr>
+            <td>' . $billing->commerce_customer_address[LANGUAGE_NONE][0]['dependent_locality'] . '</td>
+          </tr>
+          <tr>
+            <td>' . $billing->commerce_customer_address[LANGUAGE_NONE][0]['locality'] . ', ' . $billing->commerce_customer_address[LANGUAGE_NONE][0]['administrative_area'] . ' ' . $billing->commerce_customer_address[LANGUAGE_NONE][0]['postal_code'] . '</td>
+          </tr>
+          <tr>
+            <td>' . $billing->commerce_customer_address[LANGUAGE_NONE][0]['country'] . '</td>
+          </tr>
+        </tbody>
+      </table>
+    </td>
+    <td>&nbsp;</td>
+    <td>
+      <table width="100%" cellspacing="0" cellpadding="0" border="0">
+        <tbody>
+          <tr>
+            <td>' . $shipping->commerce_customer_address[LANGUAGE_NONE][0]['name_line'] . '</td>
+          </tr>
+          <tr>
+            <td>' . $shipping->commerce_customer_address[LANGUAGE_NONE][0]['organisation_name'] . '</td>
+          </tr>
+          <tr>
+            <td>' . $shipping->commerce_customer_address[LANGUAGE_NONE][0]['thoroughfare'] . '</td>
+          </tr>
+          <tr>
+            <td>' . $shipping->commerce_customer_address[LANGUAGE_NONE][0]['premise'] . '</td>
+          </tr>
+          <tr>
+            <td>' . $shipping->commerce_customer_address[LANGUAGE_NONE][0]['dependent_locality'] . '</td>
+          </tr>
+          <tr>
+            <td>' . $shipping->commerce_customer_address[LANGUAGE_NONE][0]['locality'] . ', ' . $shipping->commerce_customer_address[LANGUAGE_NONE][0]['administrative_area'] . ' ' . $shipping->commerce_customer_address[LANGUAGE_NONE][0]['postal_code'] . '</td>
+          </tr>
+          <tr>
+            <td>' . $shipping->commerce_customer_address[LANGUAGE_NONE][0]['country'] . '</td>
+          </tr>
+        </tbody>
+      </table>
+    </td>
+  </tr>
+  ';
+
+  $output .= '
+    </tbody>
+  </table>
+  ';
+
+  // Line items.
+  $output .= '
+  <br>
+  <br>
+  <table id="cart-title" width="100%" cellspacing="0" cellpadding="0" border="0">
+    <tbody>
+      <tr>
+        <td align="center"><font style="FONT-SIZE: 14px; FONT-WEIGHT: bold;">Products ordered</font></td>
+      </tr>
+      <tr><td></td></tr>
+    </tbody>
+  </table>
+  ';
+
+  $output .= '
+  <table id="line-items" class="new" width="100%" cellspacing="0" cellpadding="3" border="1">
+    <tbody>
+      <tr>
+        <td>'.$new_line_items.'</td>
+       </tr>
+    </tbody>
+  </table>
+  ';
+
+  // Order summary.
+  $output .= '
+  <table id="order-total" width="100%" cellspacing="0" cellpadding="0" border="0">
+    <tbody>
+  ';
+  if (isset($subtotal)) {
+    $output .= '
+      <tr>
+        <td width="100%" height="20" align="right"><b>Subtotal</b>&nbsp;</td>
+        <td align="right"><span style="WHITE-SPACE: nowrap">' . $subtotal . '</span>&nbsp;&nbsp;&nbsp;</td>
+      </tr>
+    ';
+  }
+  if (isset($discount)) {
+    $output .= '
+      <tr>
+        <td width="100%" height="20" align="right"><b>Discount</b>&nbsp;</td>
+        <td align="right"><span style="WHITE-SPACE: nowrap">' . $discount['amount'] . '</span>&nbsp;&nbsp;&nbsp;</td>
+      </tr>
+    ';
+  }
+  if (isset($tax)) {
+    $output .= '
+      <tr>
+        <td width="100%" height="20" align="right"><b>' . $tax['display_title'] . '</b>&nbsp;</td>
+        <td align="right"><span style="WHITE-SPACE: nowrap">' . $tax['amount'] . '</span>&nbsp;&nbsp;&nbsp;</td>
+      </tr>
+    ';
+  }
+  if (isset($shipping_fee)) {
+    $output .= '
+      <tr>
+        <td width="100%" height="20" align="right"><b>Shipping ('.$shipping_method.')</b>&nbsp;</td>
+        <td align="right"><span style="WHITE-SPACE: nowrap">' . $shipping_fee . '</span>&nbsp;&nbsp;&nbsp;</td>
+      </tr>
+    ';
+  }
+  $output .= '
+    <tr>
+      <td colspan="2"><img width="100%" height="2" alt="" src="' . $base_url . '/sites/default/files/spacer_black.gif"></td>
+    </tr>
+    <tr>
+      <td height="25" align="right" bgcolor="#cccccc"><b>Order Total</b>&nbsp;</td>
+      <td align="right" bgcolor="#cccccc"><b><span style="WHITE-SPACE: nowrap">' . $total . '</span></b>&nbsp;&nbsp;&nbsp;</td>
+    </tr>
+  ';
+  $output .= '
+    </tbody>
+  </table>
+  ';
+
+  // Footer.
+  $output .= '
+        </td>
+      </tr>
+      <tr>
+        <td align="center"><br><br><font style="FONT-SIZE:12px">Thank you for your purchase!</font></td>
+      </tr>
+    </tbody>
+  </table>
+  ';
+
+  return $output;
+}
+
+/**
+ * Generates a PDF TEST document using TCPDF
+ * @author Rafael Arevalo based on Nicola Asuni's example
+ */
+
+function accumod_generate_pdf() {
+ /**
+  * Get the depending classes from tcpdf.
+  */
+ require_once(libraries_get_path('tcpdf') . '/tcpdf.php');
+ // require_once(libraries_get_path('tcpdf') . '/examples/tcpdf_include.php');
+ require_once(libraries_get_path('tcpdf') . '/examples/lang/eng.php');
+
+ // create new PDF document
+ $pdf = new TCPDF(PDF_PAGE_ORIENTATION, PDF_UNIT, PDF_PAGE_FORMAT, true, 'UTF-8', false);
+
+// set document information
+$pdf->SetCreator(PDF_CREATOR);
+$pdf->SetAuthor('Rafael Arevalo');
+$pdf->SetTitle('TCPDF Example 001');
+$pdf->SetSubject('TCPDF Tutorial');
+$pdf->SetKeywords('TCPDF, PDF, example, test, guide');
+
+
+// set default header data
+$pdf->SetHeaderData(PDF_HEADER_LOGO, PDF_HEADER_LOGO_WIDTH, PDF_HEADER_TITLE.' 001', PDF_HEADER_STRING, array(0,64,255), array(0,64,128));
+$pdf->setFooterData(array(0,64,0), array(0,64,128));
+
+// set header and footer fonts
+$pdf->setHeaderFont(Array(PDF_FONT_NAME_MAIN, '', PDF_FONT_SIZE_MAIN));
+$pdf->setFooterFont(Array(PDF_FONT_NAME_DATA, '', PDF_FONT_SIZE_DATA));
+
+// set default monospaced font
+$pdf->SetDefaultMonospacedFont(PDF_FONT_MONOSPACED);
+
+// set margins
+$pdf->SetMargins(PDF_MARGIN_LEFT, PDF_MARGIN_TOP, PDF_MARGIN_RIGHT);
+$pdf->SetHeaderMargin(PDF_MARGIN_HEADER);
+$pdf->SetFooterMargin(PDF_MARGIN_FOOTER);
+
+// set auto page breaks
+$pdf->SetAutoPageBreak(TRUE, PDF_MARGIN_BOTTOM);
+
+// set image scale factor
+$pdf->setImageScale(PDF_IMAGE_SCALE_RATIO);
+
+// ---------------------------------------------------------
+
+// set default font subsetting mode
+$pdf->setFontSubsetting(true);
+
+// Set font
+// dejavusans is a UTF-8 Unicode font, if you only need to
+// print standard ASCII chars, you can use core fonts like
+// helvetica or times to reduce file size.
+$pdf->SetFont('dejavusans', '', 14, '', true);
+
+// Add a page
+// This method has several options, check the source code documentation for more information.
+$pdf->AddPage();
+
+// set text shadow effect
+$pdf->setTextShadow(array('enabled'=>true, 'depth_w'=>0.2, 'depth_h'=>0.2, 'color'=>array(196,196,196), 'opacity'=>1, 'blend_mode'=>'Normal'));
+
+// Set some content to print
+$html = <<<EOD
+<h1>This is <a href="#" style="text-decoration:none;background-color:#CC0000;color:black;">&nbsp;<span style="color:black;">TC</span><span style="color:white;">PDF</span>&nbsp;</a> test!</h1>
+<i>This is the first test for Invoice PDF generation.</i>
+<p>Nam sem magna tristiue non faciisis a porta ut eit </p>
+<p>Proin ut eros uis purus cursus aoreet Proin purus nis tempor ut tempor at ornare ve mauris .</p>
+EOD;
+
+// Print text using writeHTMLCell()
+$pdf->writeHTMLCell(0, 0, '', '', $html, 0, 1, 0, true, '', true);
+
+// ---------------------------------------------------------
+
+// Close and output PDF document
+// This method has several options, check the source code documentation for more information.
+
+// $d_directory = drupal_realpath('public://');
+
+// Change the path to whatever you like, even public:// will do or you could also make use of the private file system by using private://
+$uri = 'public://';
+$stream = file_stream_wrapper_get_instance_by_uri($uri);
+$path = DRUPAL_ROOT . '/' . $stream->getDirectoryPath() . '/' . file_uri_target($uri);
+
+// Supply a filename including the .pdf extension
+$filename = 'file.pdf';
+
+// Create the full path
+$full_path = $path . '/' . $filename;
+
+// $full_directory = $d_directory.'example_001.pdf';
+ob_end_clean();
+// $pdf->Output($full_directory, 'D');
+$pdf->Output($filename, 'D');
+
+//============================================================+
+// END OF PDF TEST
+//============================================================+
+}
+
+/**
+ * Implements hook_FORM_ID_alter().
+ */
+function accumod_form_taxonomy_form_term_alter(&$form, &$form_state) {
+  array_unshift($form['#submit'], 'accumod_taxonomy_metatag_submit');
+}
+
+/**
+ * Alter submitted form.
+ *
+ * @param $form
+ * @param $form_state
+ */
+function accumod_taxonomy_metatag_submit($form, &$form_state) {
+  // Copy description to summary.
+  if (empty($form_state['values']['field_summary'][LANGUAGE_NONE][0]['value'])) {
+    $raw_description = $form_state['values']['description']['value'];
+    $description = str_replace('&nbsp;', ' ', strip_tags($raw_description));
+    $summary = $description;
+
+    $form_state['values']['field_summary'][LANGUAGE_NONE][0]['value'] = $summary;
+  }
+}
+
+/**
+ * Implements hook_preprocess_HOOK().
+ */
+function accumod_preprocess_node(&$variables) {
+  if ($variables['type'] == 'product_display') {
+    drupal_add_js(drupal_get_path('module', 'accumod') . '/js/accumod.js');
+
+    $product_id = $variables['field_product'][0]['product_id'];
+    $product = commerce_product_load($product_id);
+
+    $variables['product_is_active'] = TRUE;
+    if (!$product->status) {
+      $variables['product_is_active'] = FALSE;
+      $variables['content']['field_rating']['#access'] = FALSE;
+      $variables['content']['product:commerce_price']['#access'] = FALSE;
+      $variables['content']['product:field_weight']['#access'] = FALSE;
+      $variables['content']['product:commerce_stock']['#access'] = FALSE;
+    }
+  }
+}
+
+/**
+ * Implements hook_block_view_alter().
+ */
+function accumod_block_view_alter(&$data, $block) {
+  switch ($block->module) {
+    case 'views':
+      if (is_array($data['content']) && $block->delta == '081758bebb5603e326a5caf4277880ab') {
+        $nid = $data['content']['#views_contextual_links_info']['views_ui']['view']->args[0];
+        $node = node_load($nid);
+
+        if (empty($node->field_related_products)) {
+          $data['content']['#markup'] = '';
+        }
+      }
+      break;
+  }
+}
+
+/**
+ * Implements hook_block_info().
+ */
+function accumod_block_info() {
+  $blocks['social_media'] = array(
+    'info' => t('Social Media'),
+  );
+
+  return $blocks;
+}
+
+/**
+ * Implements hook_block_view().
+ */
+function accumod_block_view($delta = '') {
+  $block = array();
+  
+  switch ($delta) {
+    case 'social_media':
+      $block['subject'] = t('Social Media');
+      $block['content'] = accumod_block_contents($delta);
+      return $block;
+      break;
+  }
+
+  return $block;
+}
+
+/**
+ * A module-defined block content function.
+ */
+function accumod_block_contents($delta) {
+  $content = array();
+  
+  switch ($delta) {
+    case 'social_media':
+      $html = '<ul class="social-links">';
+      $html .= '<li>Our social networks: &nbsp;<a target="_blank" href="https://www.facebook.com/pages/Accu-Glass-Products-Inc/213636525468113"><i class="fa fa-facebook"></i></a>&nbsp; &nbsp;<a target="_blank" href="https://www.twitter.com/AGPuhv"><i class="fa fa-twitter"></i></a>&nbsp; &nbsp;<a target="_blank" href="https://www.pinterest.com/AGPuhv"><i class="fa fa-pinterest"></i></a>&nbsp; &nbsp;<a target="_blank" href="https://plus.google.com/+Accuglassproducts"><i class="fa fa-google-plus"></i></a></li>';
+      // $html .= '<li>Download our iPad app:&nbsp; &nbsp;<a target="_blank" href="https://itunes.apple.com/us/app/accuglass-hd/id539650161?mt=8"><i class="icon-accuglass"></i></a></li>';
+      $html .= '</ul>';
+
+      $content = array(
+        '#markup' => $html,
+      );
+      break;
+  }
+
+  return $content;
+}
+/**
+ * @} End of "defgroup accumod".
+ */

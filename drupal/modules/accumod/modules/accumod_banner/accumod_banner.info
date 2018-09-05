@@ -1,0 +1,5 @@
+name = Accu-Glass Banner
+description = Custom banner for Accu-Glass project.
+core = 7.x
+package = Accu-Glass
+dependencies[] = views

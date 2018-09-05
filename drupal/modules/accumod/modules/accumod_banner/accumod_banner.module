@@ -1,0 +1,12 @@
+<?php
+
+/**
+ * Implements hook_preprocess_views_view().
+ */
+function accumod_banner_preprocess_views_view(&$variables) {
+  // Homepage banner.
+  if ($variables['name'] == 'banner' && $variables['display_id'] == 'block') {
+    $css_path = drupal_get_path('module', 'accumod_banner');
+    drupal_add_css($css_path . '/css/accumod_banner.css');
+  }
+}

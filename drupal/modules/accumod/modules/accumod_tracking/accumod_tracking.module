@@ -1,0 +1,68 @@
+<?php
+
+/**
+ * Implements hook_form_alter().
+ */
+function accumod_tracking_form_alter( &$form, &$form_state, $form_id ) {
+  if ($form_id == 'commerce_order_ui_order_form') {
+    if (accumod_staff_is_staff($GLOBALS['user'])) {
+      $form['commerce_line_items']['#access'] = FALSE;
+
+      $form['commerce_customer_shipping']['#access'] = FALSE;
+      $form['commerce_customer_billing']['#access'] = FALSE;
+
+      $form['field_is_tax_exempt']['#access'] = FALSE;
+      $form['field_tax_id']['#access'] = FALSE;
+      $form['field_has_pon']['#access'] = FALSE;
+      $form['field_add_pon']['#access'] = FALSE;
+
+      $form['commerce_discounts']['#access'] = FALSE;
+
+      $form['field_commerce_billy_cancel_date']['#access'] = FALSE;
+      $form['field_commerce_billy_i_date']['#access'] = FALSE;
+      
+      $form['field_notes']['#access'] = TRUE;
+
+      $form['user']['#access'] = FALSE;
+      $form['order_status']['#access'] = FALSE;
+      $form['order_history']['#access'] = FALSE;
+      
+      $form['actions']['submit']['#submit'][] = 'accumod_tracking_order_form_submit';
+
+      $form['actions']['submit']['#value'] = t('Add Tracking Number');
+    }
+  }
+}
+
+/**
+ * Implements hook_menu_alter().
+ */
+function accumod_tracking_menu_alter( &$items ) {
+  $items['admin/commerce/orders/%commerce_order/edit']['access callback'] = 'accumod_tracking_access_check';
+  $items['admin/commerce/orders/%commerce_order/edit/refresh']['access callback'] = 'accumod_tracking_access_check';
+  $items['admin/commerce/orders/%commerce_order/edit/checkout']['access callback'] = 'accumod_tracking_access_check';
+}
+
+/**
+ * Check user access.
+ * 
+ * @return bool
+ */
+function accumod_tracking_access_check() {
+  global $user;
+  
+  if (accumod_staff_is_staff($user)) {
+    return FALSE;
+  }
+
+  return user_access('administer users') && $user->uid > 0;
+}
+
+/**
+ * Display message once tracking number is added.
+ */
+function accumod_tracking_order_form_submit($form, &$form_state) {
+  if (! empty($form_state['values']['field_track_number'][LANGUAGE_NONE][0]['value'])) {
+    drupal_set_message('Tracking number added.');
+  }
+}

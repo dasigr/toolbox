@@ -1,0 +1,149 @@
+<?php
+
+/**
+ * @file accumod_staff.module
+ * 
+ * Author: Romualdo Dasig<das@trueapex.com>
+ */
+
+/**
+ * Implements hook_menu_alter().
+ */
+function accumod_staff_menu_alter(&$items) {
+  $items['user/%user/cancel']['access callback'] = 'accumod_staff_cancel_access';
+  $items['user/%user/edit']['access callback'] = 'accumod_staff_edit_access';
+  
+  $items['admin/config/people/accounts']['access callback'] = 'accumod_staff_forbid_administrative_user_access';
+
+  $items['admin/people']['access callback'] = 'accumod_staff_forbid_administrative_user_access';
+  $items['admin/people/create']['access callback'] = 'accumod_staff_forbid_administrative_user_access';
+
+  $items['admin/people/permissions']['access callback'] = 'accumod_staff_forbid_administrative_permission_access';
+  $items['admin/people/permissions/roles']['access callback'] = 'accumod_staff_forbid_administrative_permission_access';
+
+  $items['admin/index']['access callback'] = 'accumod_staff_forbid_administration_page_access';
+  $items['admin/help']['access callback'] = 'accumod_staff_forbid_administration_page_access';
+}
+
+/**
+ * Forbid access for staff accounts.
+ */
+function accumod_staff_forbid_administrative_user_access() {
+  if (user_has_role(11, $GLOBALS['user'])) {
+    return FALSE;
+  }
+  
+  return user_access('administer users');
+}
+
+/**
+ * Forbid access for staff accounts.
+ */
+function accumod_staff_forbid_administrative_permission_access() {
+  if (user_has_role(11, $GLOBALS['user'])) {
+    return FALSE;
+  }
+
+  return user_access('administer permissions');
+}
+
+/**
+ * Forbid access for staff accounts.
+ */
+function accumod_staff_forbid_administration_page_access() {
+  if (user_has_role(11, $GLOBALS['user'])) {
+    return FALSE;
+  }
+
+  return user_access('access administration pages');
+}
+
+/**
+ * Menu access callback; limit access to account cancellation pages.
+ *
+ * Limit access to users with the 'cancel account' permission or administrative
+ * users, and prevent the anonymous user from cancelling the account.
+ */
+function accumod_staff_cancel_access($account) {
+  if (user_has_role(11, $GLOBALS['user'])) {
+    // Do not allow staff to cancel accounts.
+    return FALSE;
+  }
+  
+  return ((($GLOBALS['user']->uid == $account->uid) && user_access('cancel account')) || user_access('administer users')) && $account->uid > 0;
+}
+
+/**
+ * Access callback for user account editing.
+ */
+function accumod_staff_edit_access($account) {
+  if (user_has_role(11, $GLOBALS['user'])) {
+    if (user_has_role(3, $account)) {
+      // Do not allow staff to edit admin accounts.
+      return FALSE;
+    }
+    
+    if (user_has_role(4, $account)) {
+      // Do not allow staff to edit admin-client accounts.
+      return FALSE;
+    }
+  }
+  
+  return (($GLOBALS['user']->uid == $account->uid) || user_access('administer users')) && $account->uid > 0;
+}
+
+/**
+ * Check if account is staff.
+ */
+function accumod_staff_is_staff($account) {
+  return user_has_role(11, $account);
+}
+
+/**
+ * Implements hook_form_alter().
+ */
+function accumod_staff_form_alter( &$form, &$form_state, $form_id ) {
+  if ($form_id == 'user_profile_form') {
+    // Customize user edit form for staff.
+    if (accumod_staff_is_staff($GLOBALS['user'])) {
+      $form['account']['name']['#access'] = FALSE;
+      $form['account']['mail']['#access'] = FALSE;
+      $form['account']['pass']['#access'] = FALSE;
+      $form['account']['roles']['#access'] = FALSE;
+      $form['account']['status']['#access'] = FALSE;
+      $form['field_address']['#access'] = FALSE;
+      $form['field_phone']['#access'] = FALSE;
+      $form['field_fax']['#access'] = FALSE;
+      $form['field_website']['#access'] = FALSE;
+      
+      // Un-group all fields.
+      $form['#group_children'] = array();
+    }
+  }
+  
+  if ($form_id == 'commerce_order_ui_order_form') {
+    // Customize order edit form for staff.
+    if (accumod_staff_is_staff($GLOBALS['user'])) {
+      $form['commerce_discounts']['#access'] = FALSE;
+      $form['order_history']['#access'] = FALSE;
+
+      $status_options = array(
+        'Canceled' => array(
+          'canceled' => t('Canceled'),
+        ),
+        'Pending' => array(
+          'pending' => t('Pending'),
+          'partial' => t('Partial'),
+          'processing' => t('Processing'),
+        ),
+        'Completed' => array(
+          'completed' => t('Completed'),
+        ),
+        'Invoiced' => array(
+          'invoiced' => t('Invoiced'),
+        ),
+      );
+      $form['order_status']['status']['#options'] = $status_options;
+    }
+  }
+}

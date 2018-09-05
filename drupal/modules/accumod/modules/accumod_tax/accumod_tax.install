@@ -1,0 +1,207 @@
+<?php
+
+/**
+ * Implements hook_schema()
+ */
+function accumod_tax_schema() {
+  $schema['accumod_tax_rate'] = array(
+    'description' => 'The base table for California taxes',
+    'fields' => array(
+      'taxid' => array(
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'description' => 'Primary key: A unique ID for each tax rate.',
+      ),
+      'country' => array(
+        'description' => 'Two letter ISO country code of this address.',
+        'type' => 'varchar',
+        'length' => 2,
+        'not null' => FALSE,
+        'default' => '',
+      ),
+      'administrative_area' => array(
+        'description' => 'The administrative area of this address. (i.e. State/Province)',
+        'type' => 'varchar',
+        'length' => 255,
+        'default' => '',
+        'not null' => FALSE,
+      ),
+      'sub_administrative_area' => array(
+        'description' => 'The sub administrative area of this address.',
+        'type' => 'varchar',
+        'length' => 255,
+        'default' => '',
+        'not null' => FALSE,
+      ),
+      'locality' => array(
+        'description' => 'The locality of this address. (i.e. City)',
+        'type' => 'varchar',
+        'length' => 255,
+        'default' => '',
+        'not null' => FALSE,
+      ),
+      'postal_code' => array(
+        'description' => 'The postal code of this address.',
+        'type' => 'varchar',
+        'length' => 255,
+        'default' => '',
+        'not null' => FALSE,
+      ),
+      'thoroughfare' => array(
+        'description' => 'The thoroughfare of this address. (i.e. Street address)',
+        'type' => 'varchar',
+        'length' => 255,
+        'default' => '',
+        'not null' => FALSE,
+      ),
+      'premise' => array(
+        'description' => 'The premise of this address. (i.e. Apartment / Suite number)',
+        'type' => 'varchar',
+        'length' => 255,
+        'default' => '',
+        'not null' => FALSE,
+      ),
+      'tax_rate' => array(
+        'description' => 'California tax rate.',
+        'type' => 'float',
+        'size' => 'normal',
+        'not null' => FALSE,
+        'default' => 0.07250,
+      ),
+      'data' => array(
+        'description' => 'Additional data for this address.',
+        'type' => 'text',
+        'size' => 'big',
+        'not null' => FALSE,
+        'serialize' => TRUE,
+      ),
+    ),
+    'primary key' => array('taxid'),
+  );
+
+  $schema['accumod_us_postal_codes'] = array(
+    'description' => 'US postal codes.',
+    'fields' => array(
+      'postal_code' => array(
+        'description' => 'The postal code of this address.',
+        'type' => 'varchar',
+        'length' => 255,
+        'default' => '',
+        'not null' => FALSE,
+      ),
+      'administrative_area' => array(
+        'description' => 'The administrative area of this address. (i.e. State/Province)',
+        'type' => 'varchar',
+        'length' => 255,
+        'default' => '',
+        'not null' => FALSE,
+      ),
+      'sub_administrative_area' => array(
+        'description' => 'The sub administrative area of this address.',
+        'type' => 'varchar',
+        'length' => 255,
+        'default' => '',
+        'not null' => FALSE,
+      ),
+      'locality' => array(
+        'description' => 'The locality of this address. (i.e. City)',
+        'type' => 'varchar',
+        'length' => 255,
+        'default' => '',
+        'not null' => FALSE,
+      ),
+    ),
+    'primary key' => array('postal_code'),
+  );
+
+  return $schema;
+}
+
+/**
+ * Implements hook_install().
+ */
+function accumod_tax_install() {
+  ini_set('memory_limit', '512M');
+
+  // Insert postal_codes.
+  // https://www.aggdata.com/node/86
+  $csv = __DIR__ . '/csv/us_postal_codes.csv';
+
+  // Get list of products from a CSV file.
+  $rows = array();
+  if (($handle = fopen($csv, "r")) !== FALSE) {
+    while (($data = fgetcsv($handle, 0, ",")) !== FALSE) {
+      $rows[] = $data;
+    }
+    fclose($handle);
+  }
+
+  // Get headers.
+  $headers = array_shift($rows);
+
+  // Reformat array of products.
+  $postal_codes = array();
+  foreach ($rows as $key => $row) {
+    $new_row = array();
+    foreach ($row as $i => $cell) {
+      $new_row[strtolower($headers[$i])] = $cell;
+    }
+
+    $postal_codes[] = $new_row;
+  }
+
+  foreach ($postal_codes as $postal_code) {
+    $record = new stdClass();
+    $record->administrative_area = $postal_code['state'];
+    $record->sub_administrative_area = $postal_code['county'];
+    $record->locality = $postal_code['city'];
+    $record->postal_code = $postal_code['postal_code'];
+
+    drupal_write_record('accumod_us_postal_codes', $record);
+  }
+
+  // Insert California tax rates.
+  // http://www.boe.ca.gov/sutax/pam71.htm
+  $csv = __DIR__ . '/csv/ca_tax_rates.csv';
+
+  // Get list of products from a CSV file.
+  $rows = array();
+  if (($handle = fopen($csv, "r")) !== FALSE) {
+    while (($data = fgetcsv($handle, 0, ",")) !== FALSE) {
+      $rows[] = $data;
+    }
+    fclose($handle);
+  }
+
+  // Get headers.
+  $headers = array_shift($rows);
+
+  // Reformat array of products.
+  $tax_rates = array();
+  foreach ($rows as $key => $row) {
+    $new_row = array();
+    foreach ($row as $i => $cell) {
+      $new_row[strtolower($headers[$i])] = $cell;
+    }
+
+    $tax_rates[] = $new_row;
+  }
+
+  foreach ($tax_rates as $tax_rate) {
+    $record = new stdClass();
+    $record->country = 'US';
+    $record->administrative_area = 'CA';
+    $record->sub_administrative_area = $tax_rate['county'];
+    $city = str_replace('*', '', $tax_rate['city']);
+    $record->locality = $city;
+    $record->postal_code = '';
+    $record->thoroughfare = '';
+    $record->premise = '';
+    $rate = str_replace('%', '', $tax_rate['rate']);
+    $rate = number_format($rate * 0.01, 4);
+    $record->tax_rate = $rate;
+
+    drupal_write_record('accumod_tax_rate', $record);
+  }
+}

@@ -1,0 +1,8 @@
+name = Accu-Glass Tracking
+description = Track customer orders.
+package = Accu-Glass
+dependencies[] = field_ui
+dependencies[] = commerce
+dependencies[] = commerce_ui
+dependencies[] = accumod_staff
+core = 7.x

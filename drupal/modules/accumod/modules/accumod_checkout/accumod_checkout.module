@@ -1,0 +1,98 @@
+<?php
+
+/**
+ * Implements hook_form_alter().
+ */
+function accumod_checkout_form_alter( &$form, &$form_state, $form_id ) {
+  if ($form_id == 'commerce_checkout_form_checkout') {
+    $order = $form_state['order'];
+    $account = user_load($order->uid);
+    
+    $customer_profiles = array('customer_profile_shipping', 'customer_profile_billing');
+    foreach ($customer_profiles as $customer_profile) {
+      // Country.
+      $form[$customer_profile]['commerce_customer_address'][LANGUAGE_NONE][0]['country']['#weight'] = 30;
+      $form[$customer_profile]['commerce_customer_address'][LANGUAGE_NONE][0]['country']['#title_display'] = 'before';
+      $form[$customer_profile]['commerce_customer_address'][LANGUAGE_NONE][0]['country']['#size'] = 30;
+      $form[$customer_profile]['commerce_customer_address'][LANGUAGE_NONE][0]['country']['#attributes']['class'][] = 'clearfix';
+
+      // Name and Organisation block.
+      $form[$customer_profile]['commerce_customer_address'][LANGUAGE_NONE][0]['name_and_organisation_block'] = array(
+        '#type' => 'addressfield_container',
+        '#attributes' => array(
+          'class' => array('addressfield-container-inline', 'name-and-organisation-block', 'clearfix'),
+        ),
+        '#access' => TRUE,
+        '#weight' => 0,
+      );
+
+      $form[$customer_profile]['commerce_customer_address'][LANGUAGE_NONE][0]['name_and_organisation_block']['first_name'] = $form[$customer_profile]['commerce_customer_address'][LANGUAGE_NONE][0]['name_block']['first_name'];
+      $form[$customer_profile]['commerce_customer_address'][LANGUAGE_NONE][0]['name_and_organisation_block']['last_name'] = $form[$customer_profile]['commerce_customer_address'][LANGUAGE_NONE][0]['name_block']['last_name'];
+      $form[$customer_profile]['commerce_customer_address'][LANGUAGE_NONE][0]['name_and_organisation_block']['organisation_name'] = $form[$customer_profile]['commerce_customer_address'][LANGUAGE_NONE][0]['organisation_block']['organisation_name'];
+
+      unset($form[$customer_profile]['commerce_customer_address'][LANGUAGE_NONE][0]['name_block']['first_name']);
+      unset($form[$customer_profile]['commerce_customer_address'][LANGUAGE_NONE][0]['name_block']['last_name']);
+      unset($form[$customer_profile]['commerce_customer_address'][LANGUAGE_NONE][0]['organisation_block']['organisation_name']);
+
+      $form[$customer_profile]['commerce_customer_address'][LANGUAGE_NONE][0]['name_and_organisation_block']['#weight'] = 0;
+      $form[$customer_profile]['commerce_customer_address'][LANGUAGE_NONE][0]['name_and_organisation_block']['organisation_name']['#title'] = t('Company');
+
+      // Street block.
+      $form[$customer_profile]['commerce_customer_address'][LANGUAGE_NONE][0]['street_block']['dependent_locality'] = $form[$customer_profile]['commerce_customer_address'][LANGUAGE_NONE][0]['locality_block']['dependent_locality'];
+      unset($form[$customer_profile]['commerce_customer_address'][LANGUAGE_NONE][0]['locality_block']['dependent_locality']);
+
+      $form[$customer_profile]['commerce_customer_address'][LANGUAGE_NONE][0]['street_block']['#weight'] = 10;
+      $form[$customer_profile]['commerce_customer_address'][LANGUAGE_NONE][0]['street_block']['#attributes']['class'][] = 'clearfix';
+      $form[$customer_profile]['commerce_customer_address'][LANGUAGE_NONE][0]['street_block']['dependent_locality']['#title'] = t('Address 3');
+      $form[$customer_profile]['commerce_customer_address'][LANGUAGE_NONE][0]['street_block']['dependent_locality']['#access'] = TRUE;
+      $form[$customer_profile]['commerce_customer_address'][LANGUAGE_NONE][0]['street_block']['dependent_locality']['#size'] = 30;
+
+      // Locality block.
+      $form[$customer_profile]['commerce_customer_address'][LANGUAGE_NONE][0]['locality_block']['#weight'] = 20;
+      $form[$customer_profile]['commerce_customer_address'][LANGUAGE_NONE][0]['locality_block']['administrative_area']['#size'] = 30;
+      
+      // Telephone.
+      $form[$customer_profile]['field_telephone'][LANGUAGE_NONE][0]['value']['#size'] = 30;
+    }
+    
+    if (user_is_logged_in()) {
+      // Set default shipping information value.
+      if (isset($account->field_address[LANGUAGE_NONE])) {
+        $form['customer_profile_shipping']['commerce_customer_address'][LANGUAGE_NONE][0]['#address'] = $account->field_address[LANGUAGE_NONE][0];
+      }
+
+      if (isset($account->field_phone[LANGUAGE_NONE])) {
+        $form['customer_profile_shipping']['field_telephone'][LANGUAGE_NONE][0]['value']['#default_value'] = $account->field_phone[LANGUAGE_NONE][0]['value'];
+      }
+    }
+    
+    // Tax ID.
+    $tax_id = accumod_tax_get_tax_id($order->uid);
+    if ($tax_id !== FALSE) {
+      $form['commerce_fieldgroup_pane__group_tax']['field_tax_id'][LANGUAGE_NONE][0]['value']['#default_value'] = $tax_id;
+    }
+
+    // Coupon.
+    if (isset($form['commerce_coupon'])) {
+      $form['commerce_coupon']['#weight'] = 49;
+      $form['commerce_coupon']['coupon_code']['#size'] = 30;
+    }
+
+    // Buttons.
+    $form['buttons']['#weight'] = 50;
+  }
+  
+  if ($form_id == 'commerce_checkout_form_review') {
+    $form['buttons']['continue']['#value'] = t('Complete Order');
+  }
+  
+  if ($form_id == 'commerce_checkout_form_payment') {
+    // Set the phone in Credit Card form with value in Billing information.
+    $order = $form_state['order'];
+    $shipping_info = commerce_customer_profile_load($order->commerce_customer_billing[LANGUAGE_NONE][0]['profile_id']);
+    if (! empty($shipping_info->field_telephone)) {
+      $form['bill_to_phone']['#value'] = $shipping_info->field_telephone[LANGUAGE_NONE][0]['value'];
+      $form['bill_to_phone']['#default_value'] = $shipping_info->field_telephone[LANGUAGE_NONE][0]['value'];
+    }
+  }
+}

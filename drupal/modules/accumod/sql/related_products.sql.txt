@@ -1,0 +1,96 @@
+/**
+ * Export related products from the old site.
+ */
+
+/* Related Products 1 */
+/* 280 */
+CREATE VIEW `related_products_1` AS
+SELECT
+  `xcart_products`.`productid`,
+  `xcart_products`.`product`,
+  GROUP_CONCAT(`xcart_variants`.`productcode` SEPARATOR '|') AS 'productcode',
+  GROUP_CONCAT(`xcart_images_D`.`image_path` SEPARATOR '|') AS 'detailed_images_uri',
+  GROUP_CONCAT(`xcart_images_D`.`alt` SEPARATOR '|') AS 'detailed_images_alt',
+  GROUP_CONCAT(`xcart_images_D`.`alt` SEPARATOR '|') AS 'detailed_images_title',
+  GROUP_CONCAT(`xcart_product_links`.`productid2` SEPARATOR '|') AS 'related_products',
+  `xcart_products`.`forsale`,
+  `xcart_products`.`add_date`,
+  `xcart_products`.`provider`,
+  `xcart_products`.`distribution`,
+  `xcart_products`.`descr`,
+  `xcart_products`.`compldescr`,
+  `xcart_products`.`fulldescr`,
+  `xcart_products`.`rating`,
+  `xcart_products`.`views_stats`,
+  `xcart_products`.`sales_stats`,
+  `xcart_products`.`del_stats`,
+  `xcart_products`.`shipping_freight`,
+  `xcart_products`.`free_shipping`,
+  `xcart_products`.`discount_avail`,
+  `xcart_products`.`min_amount`,
+  `xcart_products`.`dim_x`,
+  `xcart_products`.`dim_y`,
+  `xcart_products`.`dim_z`,
+  `xcart_products`.`low_avail_limit`,
+  `xcart_products`.`free_tax`,
+  `xcart_products`.`product_type`,
+  `xcart_products`.`manufacturerid`,
+  `xcart_products`.`return_time`,
+  `xcart_products`.`keywords`,
+  `xcart_products`.`lead_time`
+FROM `xcart_variants`
+LEFT JOIN `xcart_products`
+ON `xcart_products`.`productid` = `xcart_variants`.`productid`
+LEFT JOIN `xcart_images_D`
+ON `xcart_images_D`.`id` = `xcart_products`.`productid`
+LEFT JOIN `xcart_product_links`
+ON `xcart_product_links`.`productid1` = `xcart_products`.`productid`
+GROUP BY `xcart_products`.`productid`
+ORDER BY `xcart_products`.`productid` ASC
+
+/* Related Products 2 */
+/* 1709 */
+CREATE VIEW `related_products_2` AS
+SELECT
+  `xcart_products`.`productid`,
+  `xcart_products`.`product`,
+  `xcart_products`.`productcode`,
+  GROUP_CONCAT(`xcart_images_D`.`image_path` SEPARATOR '|') AS 'detailed_images_uri',
+  GROUP_CONCAT(`xcart_images_D`.`alt` SEPARATOR '|') AS 'detailed_images_alt',
+  GROUP_CONCAT(`xcart_images_D`.`alt` SEPARATOR '|') AS 'detailed_images_title',
+  GROUP_CONCAT(`xcart_product_links`.`productid2` SEPARATOR '|') AS 'related_products',
+  `xcart_products`.`forsale`,
+  `xcart_products`.`add_date`,
+  `xcart_products`.`provider`,
+  `xcart_products`.`distribution`,
+  `xcart_products`.`descr`,
+  `xcart_products`.`compldescr`,
+  `xcart_products`.`fulldescr`,
+  `xcart_products`.`rating`,
+  `xcart_products`.`views_stats`,
+  `xcart_products`.`sales_stats`,
+  `xcart_products`.`del_stats`,
+  `xcart_products`.`shipping_freight`,
+  `xcart_products`.`free_shipping`,
+  `xcart_products`.`discount_avail`,
+  `xcart_products`.`min_amount`,
+  `xcart_products`.`dim_x`,
+  `xcart_products`.`dim_y`,
+  `xcart_products`.`dim_z`,
+  `xcart_products`.`low_avail_limit`,
+  `xcart_products`.`free_tax`,
+  `xcart_products`.`product_type`,
+  `xcart_products`.`manufacturerid`,
+  `xcart_products`.`return_time`,
+  `xcart_products`.`keywords`,
+  `xcart_products`.`lead_time`
+FROM `xcart_products`
+LEFT JOIN `xcart_images_D`
+ON `xcart_images_D`.`id` = `xcart_products`.`productid`
+LEFT JOIN `xcart_product_links`
+ON `xcart_product_links`.`productid1` = `xcart_products`.`productid`
+WHERE `xcart_products`.`productid` NOT IN (
+  SELECT DISTINCT `xcart_variants`.`productid` FROM `xcart_variants`
+)
+GROUP BY `xcart_products`.`productid`
+ORDER BY `xcart_products`.`productid` ASC

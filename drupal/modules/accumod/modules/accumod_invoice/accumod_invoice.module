@@ -1,0 +1,141 @@
+<?php
+
+/**
+ * @file
+ * Declares the rules for commerce billy mail.
+ */
+
+/**
+ * Implements hook_rules_action_info().
+ *
+ * Declares any meta-data about actions for Rules in a big, associative, nested
+ * array. See also hook_rules_action_info in the rules.api.php file, and the
+ * online documentation at http://drupal.org/node/878928.
+ */
+function accumod_invoice_rules_action_info() {
+  $actions = array(
+    // The base-level keys in the array are the machine names for the actions,
+    // and by default also the function name for the action callback. Prefix
+    // with your module name to avoid name conflicts.
+    'accumod_invoice_action_send_invoice' => array(
+      'label' => t('Send custom invoice mail.'), // Name displayed to admins
+      'group' => t('Commerce Billy'), // Used for grouping actions in select lists
+      'parameter' => array(
+        'order' => array(
+          'type' => 'commerce_order',
+          'label' => t('Order')),
+      ),
+    ),
+  );
+
+  // Don't forget to return the array of action information!
+  return $actions;
+}
+
+/**
+ * The action function for 'accumod_invoice_action_send_invoice'.
+ */
+function accumod_invoice_action_send_invoice($order) {
+  return _accumod_invoice_send_order_invoice($order);
+}
+
+/**
+ * Helper function to send the order mail.
+ *
+ * @global stdClass $language
+ * @param stdClass $order
+ * @return boolean
+ */
+function _accumod_invoice_send_order_invoice($order) {
+  try {
+    global $language;
+    if(!empty($order->order_id)){
+      // (Re-)load the order to ensure we have the order object here.
+      // This is especially important for cron runs there the object is not always loaded.
+      $order = commerce_order_load($order->order_id);
+    } else {
+      drupal_set_message('Given order-id was empty. The order could not be loaded or identified. Please check your configuration. No invoice was sent!', 'error');
+      watchdog('commerce_billy_mail', 'Given order-id was empty. The order could not be loaded or identified. Please check your configuration. No invoice was sent!', WATCHDOG_ERROR);
+      return false;
+    }
+    if (empty($order) || !is_object($order)) {
+      drupal_set_message('Given order was empty or no object. No invoice was sent!', 'error');
+      watchdog('commerce_billy_mail', 'Given order was empty or no object. No invoice was sent!', WATCHDOG_ERROR);
+      return false;
+    }
+
+    $order_account_uid = $order->uid;
+    $order_account = user_load($order_account_uid);
+    
+    // Get the order owners language.
+    $order_account_language = user_preferred_language($order_account);
+    
+    // Save the site language temporarily.
+    // IMPORTANT: Because the site language may not match the order user language (cron runs e.g.) and we have no other chance
+    // we temporarily change the global language here until there is a better solution.
+    // TODO: This might change the language if the chain breaks between this and the reset.
+    $temp_language = $language;
+    $language = $order_account_language;
+
+    // Attachments:
+    if (variable_get('commerce_billy_mail_attach_pdf_invoice', TRUE)) {
+      $attachments = _commerce_billy_mail_get_attachments($order);
+    }
+    else {
+      $attachments = array();
+    }
+
+    // Replace tokens
+    $subject = 'Order ' . $order->order_number . ' at Accu-Glass Products';
+    $body = "A new order (" . $order->order_number . ") has been placed at Accu-Glass Products.\n";
+    $body .= "Here is a link to the order:\n";
+    global $base_url;
+    $body .= $base_url . '/user/' . $order_account_uid . '/orders/' . $order->order_id;
+
+    // Set values in mail:
+    $plaintext = variable_get('commerce_billy_mail_plaintext', FALSE);
+    $params = array(
+      'subject' => $subject,
+      'body' => $body,
+      'plain' => !empty($plaintext),
+      'attachments' => $attachments,
+      'headers' => array(
+        'Cc' => '',
+        'Bcc' => '',
+      ),
+      'context' => array(
+        'subject' => $subject,
+        'body' => $body,
+        'order' => $order,
+      ),
+    );
+    
+    // Remove the Bcc and Cc headers if they are empty, else this will crash phpmailer and maybe other modules.
+    if (empty($params['headers']['Cc'])) {
+      unset($params['headers']['Cc']);
+    }
+    if (empty($params['headers']['Bcc'])) {
+      unset($params['headers']['Bcc']);
+    }
+
+    $from = variable_get('commerce_billy_mail_from', variable_get('site_mail', ini_get('sendmail_from')));
+    $to = 'weborder@accuglassproducts.com';
+    $mailkey = 'accumod_invoice_send_order_invoice';
+    $send = true;
+    
+    // Send!
+    $message = drupal_mail('commerce_billy_mail', $mailkey, $to, $order_account_language, $params, $from, $send);
+
+    // Reset the global language to its initial value.
+    $language = $temp_language;
+    if (!$message['result']) {
+      watchdog('commerce_billy_mail', 'Error sending e-mail (from %from to %to).', array('%from' => $message['from'], '%to' => $message['to']), WATCHDOG_ERROR);
+      throw new Exception(t('Unable to send e-mail. Contact the site administrator if the problem persists.'));
+    }
+    return TRUE;
+  } catch (Exception $exception) {
+    // TODO - Create an own commerce_billy_mail exception class and only catch that.
+    _drupal_log_error(_drupal_decode_exception($exception), FALSE);
+    return FALSE;
+  }
+}

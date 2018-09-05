@@ -1,0 +1,6 @@
+name = Accu-Glass Invoice
+description = Custom invoice for Accu-Glass project.
+core = 7.x
+package = Accu-Glass
+dependencies[] = commerce_billy
+dependencies[] = commerce_billy_pdf

@@ -1,0 +1,108 @@
+<?php
+
+/**
+ * Purchase Order module.
+ * 
+ * User: Romualdo Dasig <das@trueapex.com>
+ * Date: 09/04/2018
+ * Time: 8:58 PM
+ */
+
+/**
+ * Implements hook_form_alter().
+ */
+function accumod_purchase_order_form_alter(&$form, &$form_state, $form_id) {
+  if ($form_id == 'commerce_checkout_form_checkout') {
+    drupal_add_js(drupal_get_path('theme', 'accuglass') . '/js/accuglass.purchase-order.js');
+    
+    if ($form_state['order']->field_has_pon[LANGUAGE_NONE][0]['value'] == 0) {
+      $form['commerce_fieldgroup_pane__group_pon']['field_add_pon'][LANGUAGE_NONE][0]['value']['#default_value'] = NULL;
+      $form_state['order']->field_add_pon = array();
+    }
+  }
+}
+
+/**
+ * Implements hook_commerce_checkout_pane_info_alter().
+ */
+function accumod_purchase_order_commerce_checkout_pane_info_alter(&$checkout_panes) {
+  // Add custom validation for the purchase order number field.
+  if (isset($checkout_panes['commerce_fieldgroup_pane__group_pon'])) {
+    $checkout_panes['commerce_fieldgroup_pane__group_pon']['callbacks']['checkout_form_validate'] = 'accumod_purchase_order_pane_validate';
+  }
+}
+
+/**
+ * Validate purchase order number field.
+ */
+function accumod_purchase_order_pane_validate(&$form, &$form_state, $checkout_pane, $order) {
+  $valid = TRUE;
+
+  if ($form_state['values']['commerce_fieldgroup_pane__group_pon']['field_has_pon'][LANGUAGE_NONE][0]['value'] == 1) {
+    // Make sure that PON field is not empty.
+    if (empty($form_state['values']['commerce_fieldgroup_pane__group_pon']['field_add_pon'][LANGUAGE_NONE][0]['value'])) {
+      form_set_error('field_add_pon', 'Please enter your Purchase Order Number.');
+      $valid = FALSE;
+    }
+  }
+  else {
+    // Make sure that PON field is empty.
+    if (! empty($form_state['values']['commerce_fieldgroup_pane__group_pon']['field_add_pon'][LANGUAGE_NONE][0]['value'])) {
+      form_set_error('field_add_pon', 'Please remove Purchase Order Number.');
+      $valid = FALSE;
+    }
+  }
+
+  return $valid;
+}
+
+/**
+ * Shows historical PON Total
+ * Date range can be changed in view
+ */
+function accumod_purchase_order_total_order() {
+  //get user id
+  global $user;
+  $userId = $user->uid;
+
+  //define argument to apply to view
+  $userOneArg = array($userId);
+  //set view name (just look at the view edit url)
+  $view = views_get_view('commerce_backoffice_user_orders');
+  //set view display (just look at the view edit url)
+  $view->set_display("user_pon_total_orders");
+  //set argument to apply to view
+  $view->set_arguments($userOneArg);
+  $view->execute();
+  //assign view result into an array
+  $userOneArg_array = $view->result;
+
+  //define array to hold raw results
+  $userOneArg_fIds = array();
+
+  //get row values from view and assign them into the previously defined array variable
+  foreach($userOneArg_array as $userOneArg_vResults) {
+    $non_formatted = $userOneArg_vResults->field_commerce_order_total[0]['rendered']['#markup'];
+    $formatted = str_replace("$","",$non_formatted);
+    $formatted_int = floatval($formatted);
+
+    $userOneArg_fIds[] = $formatted_int;
+  }
+
+  //get total for current order
+  $order = commerce_cart_order_load($userId);
+  $wrapper = entity_metadata_wrapper('commerce_order', $order);
+  // Order total.
+  $order_total = $wrapper->commerce_order_total->value();
+  $amount = commerce_currency_amount_to_decimal($order_total['amount'], $order_total['currency_code']);
+  // Load the currency object.
+  $currency = commerce_currency_load($order_total['currency_code']);
+  $order_total = number_format(commerce_currency_round($amount, $currency), $currency['decimals'], $currency['decimal_separator'], $currency['thousands_separator']);
+  $formatted_total = str_replace("$","",$order_total);
+  $formatted_total_int = floatval($formatted_total);
+
+  $historic_total = array_sum($userOneArg_fIds);
+  $output = $formatted_total_int + $historic_total;
+
+  return $output;
+}

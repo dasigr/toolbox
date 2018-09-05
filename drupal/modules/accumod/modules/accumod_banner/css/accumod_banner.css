@@ -1,0 +1,13 @@
+.view-banner.view-id-banner .views-field-edit-node {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+}
+
+.view-banner.view-id-banner .views-field-edit-node a {
+  display: block;
+  background-color: #ecf0f1;
+  border: 1px solid #ecf0f1;
+  border-radius: 4px;
+  padding: 4px 8px;
+}

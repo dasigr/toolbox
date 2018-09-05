@@ -1,0 +1,529 @@
+<?php
+
+/**
+ * @file
+ * Defines an intershipper shipping method.
+ */
+
+/**
+ * Implements hook_menu().
+ */
+function intershipper_menu() {
+  $items = array();
+
+  $items['admin/commerce/config/shipping/methods/intershipper/edit'] = array(
+    'title' => 'Edit',
+    'description' => 'Configure the Intershipper shipping method.',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('intershipper_settings_form'),
+    'access arguments' => array('administer shipping'),
+    'file' => 'inc/intershipper.admin.inc',
+    'type' => MENU_LOCAL_TASK,
+    'context' => MENU_CONTEXT_INLINE,
+    'weight' => 0,
+  );
+
+  return $items;
+}
+
+/**
+ * Implements hook_commerce_shipping_method_info().
+ */
+function intershipper_commerce_shipping_method_info() {
+  $shipping_methods = array();
+
+  $shipping_methods['intershipper'] = array(
+    'title' => t('Intershipper method'),
+    'description' => t('Integration between intershipper and Drupal shipping system.'),
+  );
+
+  return $shipping_methods;
+}
+
+/**
+ * Implements hook_commerce_shipping_service_info().
+ */
+function intershipper_commerce_shipping_service_info() {
+  $shipping_services = array();
+
+  $delivery_methods = array('FedEx International Economy', 'FedEx International Priority',
+    'Europe International Priority', 'UPS Standard to Canada', 'UPS Ground',
+    'UPS 2nd Day Air', 'UPS 3 Day Select', 'UPS Next Day Air', 'UPS Worldwide Express');
+  foreach ($delivery_methods as $val) {
+    $shipping_services[$val] = array(
+      'title' => t($val),
+      'description' => t(''),
+      'display_title' => t($val),
+      'shipping_method' => 'intershipper',
+      'price_component' => 'shipping',
+      'callbacks' => array(
+        'rate' => 'intershipper_service_rate',
+      ),
+    );
+  }
+  $shipping_services['intershipper_fedex_collect'] = array(
+    'title' => t($val),
+    'display_title' => t('FEDEX Collect'),
+    'shipping_method' => 'intershipper',
+    'price_component' => 'shipping',
+    'callbacks' => array(
+      'rate' => 'intershipper_service_rate',
+    ),
+  );
+  $shipping_services['intershipper_ups_collect'] = array(
+    'title' => t($val),
+    'display_title' => t('UPS Collect'),
+    'shipping_method' => 'intershipper',
+    'price_component' => 'shipping',
+    'callbacks' => array(
+      'rate' => 'intershipper_service_rate',
+    ),
+  );
+  $shipping_services['intershipper_billing_collect'] = array(
+    'title' => t($val),
+    'display_title' => t('Collect Billing'),
+    'shipping_method' => 'intershipper',
+    'price_component' => 'shipping',
+    'callbacks' => array(
+      'rate' => 'intershipper_service_rate',
+    ),
+  );
+  
+  return $shipping_services;
+}
+
+/**
+ * FEDEX Collect shipping method callback: submit form.
+ */
+function intershipper_fedex_collect_details_form($payment_method, $pane_values, $checkout_pane, $order) {
+  $form = array();
+
+  $pane_values['service_details'] += array(
+    'account_number' => '',
+    'shipping_method' => '',
+  );
+  
+  $form['fedex_collect']['account_number'] = array(
+    '#type' => 'textfield',
+    '#title' => t('FEDEX Account number'),
+    '#required' => TRUE,
+    '#size' => 30,
+  );
+  $form['fedex_collect']['shipping_method'] = array(
+    '#type' => 'select',
+    '#title' => t('Shipping method'),
+    '#options' => array(
+      'Ground' => t('Ground'),
+      'Priority Overnight' => t('Priority Overnight'),
+      'Standard Overnight' => t('Standard Overnight'),
+      '2 Day' => t('2 Day'),
+      '3 Day' => t('3 Day'),
+    ),
+    '#required' => TRUE,
+  );
+
+  if (isset($pane_values['service_details']['fedex_collect'])) {
+    $form['fedex_collect']['account_number']['#default_value'] = $pane_values['service_details']['fedex_collect']['account_number'];
+    $form['fedex_collect']['shipping_method']['#default_value'] = $pane_values['service_details']['fedex_collect']['shipping_method'];
+  }
+  
+  return $form;
+}
+
+/**
+ * UPS Collect shipping method callback: submit form.
+ */
+function intershipper_ups_collect_details_form($payment_method, $pane_values, $checkout_pane, $order) {
+  $form = array();
+
+  $pane_values['service_details'] += array(
+    'account_number' => '',
+    'shipping_method' => '',
+  );
+
+  $form['ups_collect']['account_number'] = array(
+    '#type' => 'textfield',
+    '#title' => t('UPS Account number'),
+    '#required' => TRUE,
+    '#size' => 30,
+  );
+  $form['ups_collect']['shipping_method'] = array(
+    '#type' => 'select',
+    '#title' => t('Shipping method'),
+    '#options' => array(
+      'Ground' => t('Ground'),
+      'Overnight' => t('Overnight'),
+      '2 Day' => t('2 Day'),
+      '3 Day' => t('3 Day'),
+    ),
+    '#required' => TRUE,
+  );
+  
+  if (isset($pane_values['service_details']['ups_collect'])) {
+    $form['ups_collect']['account_number']['#default_value'] = $pane_values['service_details']['ups_collect']['account_number'];
+    $form['ups_collect']['shipping_method']['#default_value'] = $pane_values['service_details']['ups_collect']['shipping_method'];
+  }
+
+  return $form;
+}
+
+/**
+ * Billing Collect shipping method callback: submit form.
+ */
+function intershipper_billing_collect_details_form($payment_method, $pane_values, $checkout_pane, $order) {
+  $form = array();
+
+  $pane_values['service_details'] += array(
+    'account_number' => '',
+    'shipping_company' => '',
+    'shipping_method' => '',
+  );
+
+  $form['billing_collect']['account_number'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Account number'),
+    '#required' => TRUE,
+    '#size' => 30,
+  );
+  $form['billing_collect']['shipping_company'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Shipping company'),
+    '#required' => TRUE,
+    '#size' => 30,
+  );
+  $form['billing_collect']['shipping_method'] = array(
+    '#type' => 'select',
+    '#title' => t('Shipping method'),
+    '#options' => array(
+      'Ground' => t('Ground'),
+      'Overnight' => t('Overnight'),
+      '2 Day' => t('2 Day'),
+      '3 Day' => t('3 Day'),
+    ),
+    '#required' => TRUE,
+  );
+
+  if (isset($pane_values['service_details']['billing_collect'])) {
+    $form['billing_collect']['account_number']['#default_value'] = $pane_values['service_details']['billing_collect']['account_number'];
+    $form['billing_collect']['shipping_company']['#default_value'] = $pane_values['service_details']['billing_collect']['shipping_company'];
+    $form['billing_collect']['shipping_method']['#default_value'] = $pane_values['service_details']['billing_collect']['shipping_method'];
+  }
+
+  return $form;
+}
+
+/**
+ * Shipping service callback: returns a base price array for a shipping service
+ * calculated for the given order.
+ */
+function intershipper_service_rate($shipping_service, $order) {
+  // First attempt to recover cached shipping rates for the current order.
+  $data = commerce_shipping_rates_cache_get('intershipper', $order, 0);
+
+  if (!is_array($data)) {
+    // Include the file that handles SOAP requests.
+    module_load_include('inc', 'intershipper', 'inc/intershipper');
+
+    // Create the rate request to submit to FedEx for collecting shipping rates.
+    $request = intershipper_create_rate_request($order);
+
+    //print_r($request); die();
+    $data = array();
+    if (!empty($request)) {
+      if ($request->package->quote) {
+        foreach ($request->package->quote as $val) {
+          if ((string) $val->service->name == 'FedEx International Economy') {
+            $amount = (string) $val->rate->amount + 300;
+          }
+          else if ((string) $val->service->name == 'FedEx International Priority') {
+            $amount = (string) $val->rate->amount + 300;
+          }
+          else if((string) $val->service->name == 'UPS Ground') {
+            $amount = (string) $val->rate->amount + 125;
+          }
+          else {
+            $amount = (string) $val->rate->amount;
+          }
+          $data[(string) $val->service->name] = array(
+            'amount' => $amount,
+            'currency_code' => (string) $val->rate->currency,
+            'data' => array(),
+          );
+        }
+        if (!empty($data)) {
+          // Cache the calculated rates for subsequent requests.
+          commerce_shipping_rates_cache_set('intershipper', $order, $data);
+        }
+        else {
+          // If request fails, cache an empty array to prevent multiple failed
+          // requests since all additional requests will fail as well.
+          commerce_shipping_rates_cache_set('intershipper', $order, array());
+        }
+      }
+    }
+  }
+
+  $shipping = commerce_customer_profile_load($order->commerce_customer_shipping['und'][0]['profile_id']);
+  if ($shipping->commerce_customer_address[LANGUAGE_NONE][0]['country'] == 'US') {
+    if ($shipping_service['name'] == 'intershipper_fedex_collect') {
+      $data['intershipper_fedex_collect'] = array(
+        'amount' => 0,
+        'currency_code' => 'USD',
+        'data' => array(),
+      );
+    }
+    else if ($shipping_service['name'] == 'intershipper_ups_collect') {
+      $data['intershipper_ups_collect'] = array(
+        'amount' => 0,
+        'currency_code' => 'USD',
+        'data' => array(),
+      );
+    }
+  }
+  else {
+    if ($shipping_service['name'] == 'intershipper_billing_collect') {
+      $data['intershipper_billing_collect'] = array(
+        'amount' => 0,
+        'currency_code' => 'USD',
+        'data' => array(),
+      );
+    }
+  }
+
+  // return $rates;
+  // Return the rate for the requested service or FALSE if not found.
+  return isset($data[$shipping_service['name']]) ? $data[$shipping_service['name']] : FALSE;
+}
+
+/**
+ * Retrieves cached shipping rates for an order.
+ *
+ * @param $method
+ *   The name of the shipping method the rates are being cached for.
+ * @param $order
+ *   The order the rates were calculated for.
+ * @param $timeout
+ *   Number of seconds after which cached rates should be considered invalid.
+ *   Defaults to 0, meaning cached rates are only good for the current page
+ *   request.
+ *
+ * @return
+ *   A cached array of base rate price arrays keyed by shipping service name or
+ *   FALSE if no cache existed or the cache is invalid based on the timeout
+ *   parameter if specified.
+ */
+function intershipper_cache_get($method, $order, $timeout = 0) {
+  $cache = cache_get($order->order_id . ':' . $method, 'cache_commerce_shipping_rates');
+
+  // If no data was retrieved, return FALSE.
+  if (empty($cache)) {
+    return FALSE;
+  }
+
+  // If a timeout value was specified...
+  if ($cache->created < REQUEST_TIME - $timeout) {
+    return FALSE;
+  }
+
+  return $cache->data;
+}
+
+/**
+ * Implements hook_commerce_price_component_type_info().
+ */
+function intershipper_commerce_price_component_type_info() {
+  return array(
+    'intershipper_service_express' => array(
+      'title' => t('Express delivery'),
+      'weight' => 20,
+    ),
+  );
+}
+
+/**
+ * Decrypt all api variables in one function call.
+ */
+function intershipper_decrypt_vars($include_password) {
+  $user_vars = array();
+  $user_vars['intershipper_username'] = decrypt(variable_get('intershipper_username', ''));
+  $user_vars['intershipper_password'] = decrypt(variable_get('intershipper_password', ''));
+
+  if ($include_password) {
+    $user_vars['intershipper_password'] = decrypt(variable_get('intershipper_password', ''));
+  }
+
+  return $user_vars;
+}
+
+/**
+ * Implements hook_form_alter().
+ */
+function intershipper_form_alter( &$form, &$form_state, $form_id ) {
+  if ($form_id == 'commerce_checkout_form_review') {
+    /**
+     * Display addtional shipping details for FEDEX, UPS or Billing Collect shipping service.
+     */
+    $path = explode('/', current_path());
+    $order_id = $path[1];
+    $order = commerce_order_load($order_id);
+    
+    if (isset($order->commerce_line_items) && intershipper_shipping_details($order->commerce_line_items[LANGUAGE_NONE]) !== FALSE) {
+      $output = intershipper_shipping_details($order->commerce_line_items[LANGUAGE_NONE]);
+      $form['checkout_review']['review']['#data']['commerce_fieldgroup_pane__group_shipping_details'] = array(
+        'title' => t('Shipping details'),
+        'data' => render($output),
+      );
+    }
+  }
+
+  if ($form_id == 'commerce_product_ui_product_form') {
+    $form['field_weight'][LANGUAGE_NONE][0]['value']['#default_value'] = 0.01;
+    array_unshift($form['#validate'], 'intershipper_product_weight_validate');
+  }
+}
+
+/**
+ * Validate product's weight.
+ * 
+ * @param $form
+ * @param $form_state
+ */
+function intershipper_product_weight_validate($form, &$form_state) {
+  if (! is_numeric($form_state['values']['field_weight'][LANGUAGE_NONE][0]['value'])) {
+    form_set_error('field_weight', 'Invalid weight value.');
+  }
+}
+
+/**
+ * Get shipping details.
+ * 
+ * @param $line_item_id
+ */
+function intershipper_shipping_details($commerce_line_items) {
+  $line_item_ids = array();
+  foreach ($commerce_line_items as $line_item) {
+    $line_item_ids[] = $line_item['line_item_id'];
+  }
+  $line_items = entity_load('commerce_line_item', $line_item_ids);
+
+  $shipping_service = NULL;
+  foreach ($line_items as $line_item) {
+    if ($line_item->type == 'shipping') {
+      $shipping_service = $line_item;
+    }
+  }
+  
+  if (isset($shipping_service->data['shipping_service']) && in_array($shipping_service->data['shipping_service']['name'], array('intershipper_fedex_collect', 'intershipper_ups_collect', 'intershipper_billing_collect'))) {
+    $shipping_details = array(
+      '#type' => 'markup',
+      '#markup' => '',
+    );
+    
+    if ($shipping_service->data['shipping_service']['name'] == 'intershipper_fedex_collect') {
+      $shipping_account_number = '<div class="field field-name-field-shipping-account-number field-type-text field-label-inline inline">';
+      $shipping_account_number .= '<div class="field-label">Account number:&nbsp;</div>';
+      $shipping_account_number .= '<div class="field-items"><div class="field-item even">' . $shipping_service->data['service_details']['fedex_collect']['account_number'] . '</div></div>';
+      $shipping_account_number .= '</div>';
+
+      $shipping_details['#markup'] .= $shipping_account_number;
+    }
+
+    if ($shipping_service->data['shipping_service']['name'] == 'intershipper_ups_collect') {
+      $shipping_account_number = '<div class="field field-name-field-shipping-account-number field-type-text field-label-inline inline">';
+      $shipping_account_number .= '<div class="field-label">Account number:&nbsp;</div>';
+      $shipping_account_number .= '<div class="field-items"><div class="field-item even">' . $shipping_service->data['service_details']['ups_collect']['account_number'] . '</div></div>';
+      $shipping_account_number .= '</div>';
+
+      $shipping_details['#markup'] .= $shipping_account_number;
+    }
+
+    if ($shipping_service->data['shipping_service']['name'] == 'intershipper_billing_collect') {
+      $shipping_account_number = '<div class="field field-name-field-shipping-account-number field-type-text field-label-inline inline">';
+      $shipping_account_number .= '<div class="field-label">Account number:&nbsp;</div>';
+      $shipping_account_number .= '<div class="field-items"><div class="field-item even">' . $shipping_service->data['service_details']['billing_collect']['account_number'] . '</div></div>';
+      $shipping_account_number .= '</div>';
+
+      $shipping_details['#markup'] .= $shipping_account_number;
+    }
+
+    if ($shipping_service->data['shipping_service']['name'] == 'intershipper_billing_collect') {
+      $shipping_company = '<div class="field field-name-field-shipping-company field-type-text field-label-inline inline">';
+      $shipping_company .= '<div class="field-label">Shipping company:&nbsp;</div>';
+      $shipping_company .= '<div class="field-items"><div class="field-item even">' . $shipping_service->data['service_details']['billing_collect']['shipping_company'] . '</div></div>';
+      $shipping_company .= '</div>';
+
+      $shipping_details['#markup'] .= $shipping_company;
+    }
+
+    if ($shipping_service->data['shipping_service']['name'] == 'intershipper_fedex_collect') {
+      $shipping_method = '<div class="field field-name-field-shipping-method field-type-text field-label-inline inline">';
+      $shipping_method .= '<div class="field-label">Shipping method:&nbsp;</div>';
+      $shipping_method .= '<div class="field-items"><div class="field-item even">' . $shipping_service->data['service_details']['fedex_collect']['shipping_method'] . '</div></div>';
+      $shipping_method .= '</div>';
+
+      $shipping_details['#markup'] .= $shipping_method;
+    }
+
+    if ($shipping_service->data['shipping_service']['name'] == 'intershipper_ups_collect') {
+      $shipping_method = '<div class="field field-name-field-shipping-method field-type-text field-label-inline inline">';
+      $shipping_method .= '<div class="field-label">Shipping method:&nbsp;</div>';
+      $shipping_method .= '<div class="field-items"><div class="field-item even">' . $shipping_service->data['service_details']['ups_collect']['shipping_method'] . '</div></div>';
+      $shipping_method .= '</div>';
+
+      $shipping_details['#markup'] .= $shipping_method;
+    }
+
+    if ($shipping_service->data['shipping_service']['name'] == 'intershipper_billing_collect') {
+      $shipping_method = '<div class="field field-name-field-shipping-method field-type-text field-label-inline inline">';
+      $shipping_method .= '<div class="field-label">Shipping method:&nbsp;</div>';
+      $shipping_method .= '<div class="field-items"><div class="field-item even">' . $shipping_service->data['service_details']['billing_collect']['shipping_method'] . '</div></div>';
+      $shipping_method .= '</div>';
+
+      $shipping_details['#markup'] .= $shipping_method;
+    }
+
+    return $shipping_details;
+  }
+  
+  return FALSE;
+}
+
+/**
+ * Get shipping details.
+ *
+ * @param $line_item_id
+ */
+function intershipper_shipping_details_email($commerce_line_items) {
+  $line_item_ids = array();
+  foreach ($commerce_line_items as $line_item) {
+    $line_item_ids[] = $line_item['line_item_id'];
+  }
+  $line_items = entity_load('commerce_line_item', $line_item_ids);
+
+  $shipping_service = NULL;
+  foreach ($line_items as $line_item) {
+    if ($line_item->type == 'shipping') {
+      $shipping_service = $line_item;
+    }
+  }
+
+  if (in_array($shipping_service->data['shipping_service']['name'], array('intershipper_fedex_collect', 'intershipper_ups_collect', 'intershipper_billing_collect'))) {
+    $shipping_details = array();
+
+    if ($shipping_service->data['shipping_service']['name'] == 'intershipper_fedex_collect') {
+      $shipping_details = $shipping_service->data['service_details']['fedex_collect'];
+    }
+
+    if ($shipping_service->data['shipping_service']['name'] == 'intershipper_ups_collect') {
+      $shipping_details = $shipping_service->data['service_details']['ups_collect'];
+    }
+
+    if ($shipping_service->data['shipping_service']['name'] == 'intershipper_billing_collect') {
+      $shipping_details = $shipping_service->data['service_details']['billing_collect'];
+    }
+
+    return $shipping_details;
+  }
+
+  return FALSE;
+}
